@@ -249,10 +249,11 @@ async function unlock(){
     fidBusy=false;$("#lock").hidden=true;showApp();
   }catch(e){
     fidBusy=false;
-    // Face ID failed or was cancelled: go straight to the password screen, keep a Face ID button there
+    // Face ID failed (often: the passkey was saved in another browser). Forget it so it can be set up again here after the password login.
+    try{localStorage.removeItem(FID);localStorage.removeItem(FID+"-asked")}catch(x){}
     $("#lock").hidden=true;$("#app").hidden=true;$("#login").hidden=false;
-    $("#faceLoginBtn").hidden=false;
-    msg("Face ID לא עבד ("+fidErr(e)+"). אפשר לנסות שוב בכפתור למעלה, או להיכנס עם סיסמה.");
+    $("#faceLoginBtn").hidden=true;
+    msg("Face ID לא עבד. היכנס עם הסיסמה, ומיד אחר כך האפליקציה תציע להגדיר Face ID מחדש במכשיר הזה.");
     setTimeout(()=>$("#pass").focus(),300);
   }
 }
