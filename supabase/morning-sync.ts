@@ -47,10 +47,20 @@ Deno.serve(async (req) => {
     const tok = await token();
     const now = new Date(), from = new Date(now.getFullYear() - 2, 0, 1);
     const docs = await all(tok, "/documents/search", {fromDate: ymd(from), toDate: ymd(now)});
+    // client phones/emails live on the client card, not always on the document
+    const cl: Record<string, any> = {};
+    try {
+      const clients = await all(tok, "/clients/search", {});
+      for (const c of clients) { if (c.id) cl[c.id] = c; if (c.name) cl["n:" + String(c.name).trim()] = c; }
+    } catch (_) { /* optional */ }
+    const cc = (d: any) => cl[d.client?.id] || cl["n:" + String(d.client?.name || "").trim()] || {};
+    const phoneOf = (d: any) => { const c = cc(d); return d.client?.mobile || d.client?.phone || c.mobile || c.phone || null; };
+    const mailOf = (d: any) => { const c = cc(d); return (d.client?.emails || [])[0] || d.client?.email || (c.emails || [])[0] || c.email || null; };
     const rows = docs.map((d: any) => ({
       id: d.id, number: String(d.number ?? ""), type: d.type, type_name: TYPES[d.type] ?? String(d.type),
       status: d.status, status_name: STATUS[d.status] ?? String(d.status), doc_date: d.documentDate || null,
       client: d.client?.name ?? null, description: d.description ?? null, amount: d.amount ?? null,
+      client_phone: phoneOf(d), client_email: mailOf(d),
       currency: d.currency ?? "ILS", url: d.url?.he ?? d.url?.origin ?? null, synced_at: now.toISOString()}));
     if (rows.length) { const { error } = await sb.from("morning_docs").upsert(rows); if (error) throw error; }
     let exCount = 0;

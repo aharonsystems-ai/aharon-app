@@ -205,7 +205,7 @@ const SCHEMA={
  expenses:{title:"הוצאה",fields:[["date","תאריך","date"],["vendor","ספק / חנות","text",1],["cat","קטגוריה","select",0,EXP_CATS],["amount","סכום כולל ₪","num"],
   ["vat",'מע"מ ששולם ₪',"num"],["for_job","עבור לקוח","text"],["receipt","יש קבלה?","select",0,["","כן","לא","מזומן"]],["notes","הערות","textarea"]]}
 };
-const data={jobs:[],stock:[],tasks:[],debts:[],expenses:[],morning_docs:[],projects:[]};
+const data={jobs:[],stock:[],tasks:[],debts:[],expenses:[],morning_docs:[],projects:[],quote_followups:[]};
 let curProject=null,curJob=null;
 let tab="home",q="",filt={},loaded=false,lastSync=null;
 
@@ -326,12 +326,12 @@ $("#resetBtn").addEventListener("click",async()=>{
 async function loadAll(){
   $("#status").textContent="טוען…";
   try{
-    const tables=["jobs","stock","tasks","debts","expenses","morning_docs","projects"];
+    const tables=["jobs","stock","tasks","debts","expenses","morning_docs","projects","quote_followups"];
     const res=await Promise.all(tables.map(t=>sb.from(t).select("*").limit(5000)));
     res.forEach((r,i)=>{if(r.error)throw r.error;data[tables[i]]=r.data||[]});
     const lg=await sb.from("sync_log").select("at,ok,message").order("at",{ascending:false}).limit(1);
     lastSync=lg.data&&lg.data[0]||null;
-    loaded=true;
+    loaded=true;updateBadge();
     $("#status").textContent=lastSync?`Morning: ${new Date(lastSync.at).toLocaleString("he-IL",{day:"numeric",month:"numeric",hour:"2-digit",minute:"2-digit"})}${lastSync.ok?"":" (שגיאה)"}`:"Morning: עוד לא סונכרן";
     if($("#sheet").hidden)render();
   }catch(err){$("#status").textContent="אין חיבור לנתונים";toast("הנתונים לא נטענו. בדוק אינטרנט ונסה שוב.")}
@@ -376,7 +376,7 @@ function home(){
   const yearJobs=data.jobs.filter(j=>(j.date||"").startsWith(y));
   const income=yearJobs.reduce((a,j)=>a+num(j.price),0), profit=yearJobs.reduce((a,j)=>a+profitOf(j),0);
   const expY=data.expenses.filter(x=>(x.date||"").startsWith(y)).reduce((a,x)=>a+num(x.amount),0);
-  const quotes=openQuotes();
+  const quotes=openQuotes(), dueQ=dueQuotes();
   return `
   <div class="tiles">
    <button class="tile ${owedSum?'bad':''}" data-go="jobs" data-f="owed"><span>חייבים לי</span><b>${ils(owedSum)}</b><span>${inv.length} חשבוניות + ${owed.length} עבודות</span></button>
@@ -384,8 +384,8 @@ function home(){
    <button class="tile ${low.length?'bad':'good'}" data-go="stock" data-f="low"><span>חסר במלאי</span><b>${low.length}</b><span>${data.stock.length} פריטים</span></button>
    <button class="tile" data-go="tasks"><span>משימות פתוחות</span><b>${tasks.length}</b><span>${tasks.filter(t=>t.date&&t.date<=today()).length} להיום או באיחור</span></button>
   </div>
+  ${quotes.length?`<button class="tile ${dueQ.length?'warn':''}" data-go="quotes" data-f="${dueQ.length?'due':'active'}"><span>הצעות מחיר · לחזור ללקוחות</span><b>${dueQ.length?dueQ.length+" להיום":"אין להיום"}</b><span>${quotes.length} פתוחות · ${ils(quotes.reduce((a,d)=>a+num(d.amount),0))} · לחץ לרשימה</span></button>`:""}
   ${inv.length?`<h2>חשבוניות פתוחות ב־Morning</h2><div class="list">${inv.sort((a,b)=>String(b.doc_date).localeCompare(String(a.doc_date))).map(docRow).join("")}<div class="sum"><span>סה״כ</span><span>${ils(inv.reduce((a,d)=>a+num(d.amount),0))}</span></div></div>`:""}
-  ${quotes.length?`<button class="tile" data-go="quotes"><span>הצעות מחיר פתוחות ב־Morning</span><b>${quotes.length}</b><span>${ils(quotes.reduce((a,d)=>a+num(d.amount),0))} · לחץ לרשימה</span></button>`:""}
   <section class="list" aria-label="סיכום שנה">
    <div class="sum"><span>הכנסות ${y} (לפי עבודות)</span><span>${ils(income)}</span></div>
    <div class="sum plain"><span>רווח בפועל ${y}</span><span>${ils(profit)}</span></div>
@@ -397,11 +397,88 @@ function home(){
   ${unknown.length?`<div class="note">${unknown.length} עבודות בלי סטטוס תשלום. <a href="#" data-go="jobs" data-f="unknown">לעבור עליהן</a> ולסמן מה שולם.</div>`:""}
   <div class="bar"><button class="btn ghost" type="button" id="logout">יציאה מהחשבון</button></div>`;
 }
+/* ---------- quotes: follow-up pipeline ---------- */
+const QST=["פתוחה","בטיפול","זכינו","הפסדנו","לא רלוונטי"];
+const addDays=(d,n)=>{const t=new Date(String(d||today()).slice(0,10)+"T12:00:00Z");t.setUTCDate(t.getUTCDate()+n);return t.toISOString().slice(0,10)};
+const daysSince=d=>d?Math.round((Date.parse(today())-Date.parse(String(d).slice(0,10)))/864e5):0;
+const activeQ=f=>f.status==="פתוחה"||f.status==="בטיפול";
+function fu(d){return data.quote_followups.find(f=>f.doc_id===d.id)||{doc_id:d.id,status:"פתוחה",next_date:addDays(d.doc_date,3),contacts:0}}
+function quotePhone(d,f){if(f.phone)return f.phone;if(d.client_phone)return d.client_phone;const c=String(d.client||"").trim();
+  const j=c&&data.jobs.find(j=>j.phone&&j.client&&(j.client.includes(c)||c.includes(j.client)));return j?j.phone:""}
+function isDue(d){const f=fu(d);return activeQ(f)&&!!f.next_date&&f.next_date<=today()}
+function dueQuotes(){return openQuotes().filter(isDue)}
+function updateBadge(){try{const n=dueQuotes().length;if(navigator.setAppBadge){n?navigator.setAppBadge(n):navigator.clearAppBadge()}}catch(e){}}
+async function saveFu(doc_id,patch){
+  const cur=data.quote_followups.find(f=>f.doc_id===doc_id);
+  const row=Object.assign({doc_id,status:"פתוחה",contacts:0},cur||{},patch,{updated_at:new Date().toISOString()});
+  const {data:r,error}=await sb.from("quote_followups").upsert(row).select().single();
+  if(error){toast("השמירה נכשלה. נסה שוב.");return null}
+  const i=data.quote_followups.findIndex(f=>f.doc_id===doc_id);if(i>=0)data.quote_followups[i]=r;else data.quote_followups.push(r);
+  updateBadge();return r;
+}
+function quoteText(d){
+  return `שלום ${d.client||""},\nכאן אהרן מאהרן מערכות.\nרציתי לבדוק אם עברת על הצעת המחיר ששלחתי (מס׳ ${d.number}${d.description?" – "+d.description:""}).\nאשמח לענות על כל שאלה ולתאם מועד התקנה.\n${d.url?"ההצעה: "+d.url+"\n":""}אהרן מערכות · ${BIZ_PHONE}`;
+}
+function quoteRow(d){
+  const f=fu(d),age=daysSince(d.doc_date);let p;
+  if(activeQ(f)){const late=f.next_date&&f.next_date<today();p=isDue(d)?`<span class="pill bad">${late?"באיחור "+daysSince(f.next_date)+" ימים":"לחזור היום"}</span>`:`<span class="pill">לחזור ${heDate(f.next_date)}</span>`}
+  else p=`<span class="pill ${f.status==="זכינו"?"good":""}">${esc(f.status)}</span>`;
+  const s=[`הצעה ${d.number}`,age>0?`לפני ${age} ימים`:"היום",f.status==="בטיפול"?"בטיפול":"",f.contacts?`פניתי ${f.contacts}×`:"",quotePhone(d,f)?"":"אין טלפון",d.description||""].filter(Boolean).join(" · ");
+  return `<button type="button" class="row" data-quote="${esc(d.id)}"><span class="t">${esc(d.client||"")}</span><span class="n">${ils(d.amount)}</span><span class="s">${esc(s)}</span><span class="p">${p}</span></button>`;
+}
 function quotesView(){
-  const qs=openQuotes().sort((a,b)=>String(b.doc_date).localeCompare(String(a.doc_date)));
-  return `<div class="bar"><h2 style="flex:1">הצעות מחיר פתוחות</h2><button class="btn ghost" type="button" data-go="home">חזרה</button></div>
-  <div class="note">הצעות שעוד לא נסגרו ב־Morning. לחיצה פותחת את המסמך.</div>
-  <div class="list">${qs.length?qs.map(docRow).join(""):`<div class="empty">אין הצעות פתוחות.</div>`}<div class="sum"><span>${qs.length} הצעות</span><span>${ils(qs.reduce((a,d)=>a+num(d.amount),0))}</span></div></div>`;
+  const cur=filt.quotes||"active", all=openQuotes();
+  const fl={active:d=>activeQ(fu(d)),due:isDue,closed:d=>!activeQ(fu(d)),all:()=>true};
+  const qs=all.filter(fl[cur]).sort((a,b)=>String(fu(a).next_date||"9").localeCompare(String(fu(b).next_date||"9"))||String(b.doc_date).localeCompare(String(a.doc_date)));
+  const nDue=all.filter(isDue).length;
+  return `<div class="bar"><h2 style="flex:1">הצעות מחיר</h2><button class="btn ghost" type="button" data-go="home">חזרה</button></div>
+  <div class="note">הצעות פתוחות ב־Morning. לכל הצעה יש תאריך לחזור ללקוח (בהתחלה: 3 ימים אחרי ההצעה). שליחת וואטסאפ מהכרטיס דוחה אוטומטית ב־3 ימים.</div>
+  <div class="filters" role="group" aria-label="סינון">${[["active","לטיפול"],["due",`להיום (${nDue})`],["closed","נסגרו"],["all","הכל"]].map(([v,l])=>`<button type="button" class="chipbtn" data-filt="${v}" aria-pressed="${v===cur}">${l}</button>`).join("")}</div>
+  <div class="list">${qs.length?qs.map(quoteRow).join(""):`<div class="empty">${cur==="due"?"אין הצעות לחזור אליהן היום 👍":"אין הצעות כאן."}</div>`}<div class="sum"><span>${qs.length} הצעות</span><span>${ils(qs.reduce((a,d)=>a+num(d.amount),0))}</span></div></div>`;
+}
+function openQuote(id){
+  const d=data.morning_docs.find(x=>x.id===id);if(!d)return;
+  const f=fu(d),el=$("#sheet");
+  const job=f.job_id&&data.jobs.find(j=>j.id===f.job_id);
+  el.innerHTML=`<form id="qform" novalidate><h3>${esc(d.client||"הצעת מחיר")}</h3>
+   <div class="note">הצעה ${esc(d.number)} · ${heDate(d.doc_date)} · <b>${ils(d.amount)}</b>${d.description?"<br>"+esc(d.description):""}${d.url?`<br><a href="${esc(d.url)}" target="_blank" rel="noopener">פתיחת ההצעה</a>`:""}${f.contacts?`<br>פניתי ${f.contacts} פעמים${f.last_contact?" · אחרון "+heDate(f.last_contact):""}`:""}</div>
+   <div class="f"><label for="q_phone">טלפון</label><input id="q_phone" type="tel" dir="ltr" value="${esc(quotePhone(d,f))}" placeholder="05x-xxxxxxx"></div>
+   <div class="bar"><a class="btn" id="q_wa" href="#" target="_blank" rel="noopener" style="flex:1;text-align:center;text-decoration:none">💬 וואטסאפ ללקוח</a><a class="btn ghost" id="q_call" href="#" style="text-decoration:none">📞 חיוג</a></div>
+   <div class="f"><label for="q_next">לחזור ללקוח בתאריך</label><input id="q_next" type="date" value="${esc(f.next_date||"")}"></div>
+   <div class="filters">${[["מחר",1],["3 ימים",3],["שבוע",7],["שבועיים",14]].map(([l,n])=>`<button type="button" class="chipbtn" data-days="${n}">${l}</button>`).join("")}</div>
+   <div class="f"><label for="q_status">סטטוס</label><select id="q_status">${QST.map(s=>`<option ${s===f.status?"selected":""}>${s}</option>`).join("")}</select></div>
+   <div class="f"><label for="q_notes">הערות (מה הלקוח אמר)</label><textarea id="q_notes">${esc(f.notes||"")}</textarea></div>
+   ${job?`<button class="btn ghost" type="button" data-open-job="${esc(job.id)}">פתיחת העבודה של ההצעה</button>`:`<button class="btn ghost" type="button" id="q_won">🎉 זכינו – לפתוח עבודה</button>`}
+   <div class="actions"><button class="btn" type="submit">שמירה</button><button class="btn ghost" type="button" data-close>סגירה</button></div></form>`;
+  el.hidden=false;
+  const form=$("#qform"),ph=$("#q_phone"),wa=$("#q_wa"),call=$("#q_call");
+  const links=()=>{const p=waPhone(ph.value);wa.href=p?`https://wa.me/${p}?text=${encodeURIComponent(quoteText(d))}`:"#";call.href=p?"tel:+"+p:"#"};
+  links();ph.oninput=links;
+  const contact=e=>{
+    if(!waPhone(ph.value)){e.preventDefault();toast("צריך מספר טלפון");ph.focus();return}
+    const c=data.quote_followups.find(x=>x.doc_id===d.id)||f, next=addDays(today(),3), st=$("#q_status").value==="פתוחה"?"בטיפול":$("#q_status").value;
+    $("#q_next").value=next;$("#q_status").value=st;
+    saveFu(d.id,{phone:ph.value.trim()||null,contacts:num(c.contacts)+1,last_contact:new Date().toISOString(),next_date:next,status:st,notes:$("#q_notes").value.trim()||null});
+  };
+  wa.onclick=contact;call.onclick=contact;
+  el.onclick=async e=>{
+    if(e.target===el||e.target.closest("[data-close]")){el.hidden=true;render();return}
+    if(e.target.closest("[data-open-job]")){el.hidden=true;return}
+    const dd=e.target.closest("[data-days]");if(dd){$("#q_next").value=addDays(today(),+dd.dataset.days);return}
+    const w=e.target.closest("#q_won");
+    if(w){w.disabled=true;w.textContent="פותח עבודה…";
+      const body={client:d.client||"לקוח",phone:ph.value.trim()||null,work:d.description||null,price:d.amount??null,date:today(),paid:"לא ידוע",
+        notes:`מהצעת מחיר ${d.number}`,morning_doc_id:d.id,updated_at:new Date().toISOString()};
+      const {data:j,error}=await sb.from("jobs").insert(body).select().single();
+      if(error){toast("לא הצלחתי לפתוח עבודה");w.disabled=false;w.textContent="🎉 זכינו – לפתוח עבודה";return}
+      await saveFu(d.id,{status:"זכינו",job_id:j.id,phone:ph.value.trim()||null,notes:$("#q_notes").value.trim()||null});
+      el.hidden=true;toast("נפתחה עבודה 🎉");curJob=j.id;tab="jobs";await loadAll();render();window.scrollTo(0,0);return}
+  };
+  form.onsubmit=async e=>{
+    e.preventDefault();
+    const r=await saveFu(d.id,{phone:ph.value.trim()||null,next_date:$("#q_next").value||null,status:$("#q_status").value,notes:$("#q_notes").value.trim()||null});
+    if(r){toast("נשמר");el.hidden=true;render()}
+  };
 }
 const FILTERS={
  jobs:[["all","הכל"],["owed","חייבים"],["unknown","לא ידוע"],["paid","שולם"]],
@@ -934,6 +1011,7 @@ document.addEventListener("click",async e=>{
   if(e.target.closest("#ptCancel")){const p=curP();selPt=null;drawMarkers(p);selBox(p);return}
   if(e.target.closest("#sharePlan")){sharePlan(curP());return}
   if(e.target.closest("#textProj")||e.target.closest("#textProj2")){textSheet(curP());return}
+  const qd=e.target.closest("[data-quote]");if(qd){openQuote(qd.dataset.quote);return}
   const g=e.target.closest("[data-go]");if(g){e.preventDefault();if(g.dataset.f)filt[g.dataset.go]=g.dataset.f;go(g.dataset.go);return}
   const n=e.target.closest("[data-new]");if(n){openSheet(n.dataset.new);return}
   const op=e.target.closest("[data-open-project]");if(op){curProject=op.dataset.openProject;render();window.scrollTo(0,0);return}
