@@ -73,9 +73,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .note a{color:var(--accent);font-weight:600}
 .sum{display:flex;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--chip);font-weight:700;font-variant-numeric:tabular-nums}
 .sum.plain{background:none;border-top:1px solid var(--line)}
-nav{position:fixed;inset:auto 0 0 0;z-index:6;background:var(--card);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(6,1fr);
+nav{position:fixed;inset:auto 0 0 0;z-index:6;background:var(--card);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(7,1fr);
   padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
-nav button{background:none;border:0;color:var(--muted);font:600 11.5px var(--body);padding:8px 2px 9px;display:grid;justify-items:center;gap:3px;cursor:pointer}
+nav button{background:none;border:0;color:var(--muted);font:600 10.5px var(--body);padding:8px 0 9px;min-width:0;display:grid;justify-items:center;gap:3px;cursor:pointer}
 nav button svg{width:22px;height:22px}
 nav button[aria-current=page]{color:var(--accent)}
 .sheet{position:fixed;inset:0;z-index:20;background:rgba(5,10,25,.5);display:flex;align-items:flex-end;justify-content:center}
@@ -94,6 +94,24 @@ nav button[aria-current=page]{color:var(--accent)}
 .login h1{font:700 22px var(--display);margin:0}
 .login p{margin:0;color:var(--muted)}
 .code{letter-spacing:.4em;text-align:center;font-size:22px!important;direction:ltr}
+.scan{position:fixed;inset:0;z-index:40;background:#000;display:flex;flex-direction:column}
+.scan video{flex:1;width:100%;object-fit:cover;min-height:0}
+.scan .frame{position:absolute;left:10%;right:10%;top:35%;height:22%;border:3px solid #ffbf00;border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.35);pointer-events:none}
+.scan .bar2{padding:14px max(16px,env(safe-area-inset-right,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;gap:8px;justify-content:space-between;align-items:center;background:#000;color:#fff}
+.scan .hint{position:absolute;top:calc(20px + env(safe-area-inset-top,0px));left:0;right:0;text-align:center;color:#fff;font-weight:700;text-shadow:0 1px 3px #000}
+.qtyrow{display:flex;gap:8px;align-items:center}
+.qtyrow input{flex:1}
+.qtyrow button{width:48px;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--chip);color:var(--fg);font:700 20px var(--body);cursor:pointer}
+.plan{position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;touch-action:manipulation}
+.plan img{display:block;width:100%;height:auto;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.mk{position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;display:grid;place-items:center;color:#fff;font:700 11px var(--body);border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45);cursor:pointer;padding:0}
+.mk[aria-pressed=true]{outline:3px solid #ffbf00;outline-offset:2px}
+.palette{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.palette button{border:2px solid var(--line);background:var(--card);color:var(--fg);border-radius:12px;padding:8px 2px;font:600 12px var(--body);display:grid;justify-items:center;gap:4px;cursor:pointer}
+.palette button[aria-pressed=true]{border-color:var(--accent);background:var(--chip)}
+.dot{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;color:#fff;font:700 10px var(--body)}
+.counts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+@media(min-width:640px){.counts{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media (prefers-reduced-motion:no-preference){.sheet form{animation:up .18s ease-out}@keyframes up{from{transform:translateY(30px);opacity:.6}}}
 </style>
 </head>
@@ -142,7 +160,9 @@ const ICON={
  debts:'<path d="M12 3v18M17 7H9.5a3 3 0 0 0 0 6h5a3 3 0 0 1 0 6H6"/>',
  expenses:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/>'
 };
-const TABS=[["home","בית"],["jobs","עבודות"],["stock","מלאי"],["tasks","משימות"],["debts","חובות"],["expenses","הוצאות"]];
+ICON.projects='<path d="M3 5h7v14H3zM14 5h7v6h-7zM14 15h7v4h-7z"/>';
+const TABS=[["home","בית"],["jobs","עבודות"],["projects","פרויקטים"],["stock","מלאי"],["tasks","משימות"],["debts","חובות"],["expenses","הוצאות"]];
+const PT={cam:{l:"מצלמה",c:"#1747b8",s:"C"},net:{l:"נק׳ רשת",c:"#11845b",s:"N"},wifi:{l:"WiFi",c:"#7b3fc4",s:"W"},audio:{l:"אודיו",c:"#d9730d",s:"A"},other:{l:"אחר",c:"#5d6b85",s:"•"}};
 const TAX=["ביטוח לאומי","מס הכנסה",'מע"מ'];
 const DEBT_CATS=["ספק","ביטוח לאומי","מס הכנסה",'מע"מ',"אשראי/הלוואה","אחר"];
 const EXP_CATS=["ציוד","כלי עבודה","דלק ורכב","ביטוח לאומי","מס הכנסה",'מע"מ',"תקשורת","רואת חשבון","עובדים","אחר"];
@@ -152,8 +172,11 @@ const SCHEMA={
   ["work","פרטי עבודה","textarea"],["date","תאריך עבודה","date"],["price","מחיר גבייה ₪","num"],["cost","עלויות ₪","num"],
   ["profit","רווח בפועל ₪","num"],["paid","שולם?","select",0,["לא ידוע","כן","לא","חלקי"]],["paid_amount","כמה שולם ₪ (אם חלקי)","num"],
   ["receipt","הוצאה קבלה?","select",0,["","כן","לא"]],["notes","הערות","textarea"]]},
- stock:{title:"פריט מלאי",fields:[["name","שם הפריט","text",1],["qty","כמות במלאי","num"],["min_qty","התראה מתחת ל־","num"],
-  ["unit_cost","מחיר קנייה ליחידה ₪","num"],["supplier","ספק","text"],["notes","הערות","textarea"]]},
+ stock:{title:"פריט מלאי",fields:[["name","שם הפריט","text",1],["category","קטגוריה","select",0,["","מצלמות","מקליטים","תקשורת","כבלים","אביזרים","אזעקה","אינטרקום","בקרת כניסה","אודיו","מגברי קליטה","מ-Morning","אחר"]],
+  ["qty","כמות במלאי","num"],["min_qty","התראה מתחת ל־","num"],["brand","יצרן / דגם","text"],["barcode","ברקוד","text"],
+  ["unit_cost","מחיר קנייה ליחידה ₪","num"],["sell_price","מחיר מכירה ₪","num"],["supplier","ספק","text"],["notes","הערות","textarea"]]},
+ projects:{title:"פרויקט",fields:[["name","שם הפרויקט","text",1],["client","לקוח","text"],["address","כתובת","text"],
+  ["status","סטטוס","select",0,["תכנון","הצעת מחיר","בביצוע","הסתיים"]],["notes","הערות","textarea"]]},
  tasks:{title:"משימה",fields:[["title","מה צריך לעשות","text",1],["client","לקוח","text"],["date","תאריך","date"],
   ["done","סטטוס","select",0,["פתוח","בוצע"]],["notes","הערות","textarea"]]},
  debts:{title:"חוב",fields:[["name","למי","text",1],["cat","סוג","select",0,DEBT_CATS],["amount","סכום ₪","num"],["due","תאריך תשלום","date"],
@@ -161,7 +184,8 @@ const SCHEMA={
  expenses:{title:"הוצאה",fields:[["date","תאריך","date"],["vendor","ספק / חנות","text",1],["cat","קטגוריה","select",0,EXP_CATS],["amount","סכום כולל ₪","num"],
   ["vat",'מע"מ ששולם ₪',"num"],["for_job","עבור לקוח","text"],["receipt","יש קבלה?","select",0,["","כן","לא","מזומן"]],["notes","הערות","textarea"]]}
 };
-const data={jobs:[],stock:[],tasks:[],debts:[],expenses:[],morning_docs:[]};
+const data={jobs:[],stock:[],tasks:[],debts:[],expenses:[],morning_docs:[],projects:[]};
+let curProject=null;
 let tab="home",q="",filt={},loaded=false,lastSync=null;
 
 const $=s=>document.querySelector(s);
@@ -226,7 +250,7 @@ $("#resetBtn").addEventListener("click",async()=>{
 async function loadAll(){
   $("#status").textContent="טוען…";
   try{
-    const tables=["jobs","stock","tasks","debts","expenses","morning_docs"];
+    const tables=["jobs","stock","tasks","debts","expenses","morning_docs","projects"];
     const res=await Promise.all(tables.map(t=>sb.from(t).select("*").limit(5000)));
     res.forEach((r,i)=>{if(r.error)throw r.error;data[tables[i]]=r.data||[]});
     const lg=await sb.from("sync_log").select("at,ok,message").order("at",{ascending:false}).limit(1);
@@ -247,7 +271,7 @@ $("#syncBtn").addEventListener("click",async()=>{
 /* ---------- nav ---------- */
 $("#nav").innerHTML=TABS.map(([k,l])=>`<button type="button" data-tab="${k}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>${l}</button>`).join("");
 $("#nav").addEventListener("click",e=>{const b=e.target.closest("button");if(b)go(b.dataset.tab)});
-function go(t){tab=t;q="";render();window.scrollTo(0,0)}
+function go(t){if(t!=="projects"||tab==="projects")curProject=null;tab=t;q="";render();window.scrollTo(0,0)}
 
 /* ---------- views ---------- */
 function render(){
@@ -256,6 +280,7 @@ function render(){
   if(!loaded){m.innerHTML=`<div class="list"><div class="empty">טוען נתונים…</div></div>`;return}
   if(tab==="home"){m.innerHTML=home();return}
   if(tab==="quotes"){m.innerHTML=quotesView();return}
+  if(tab==="projects"&&curProject){projectView(m);return}
   m.innerHTML=listView(tab);
   const s=$("#q");if(s){s.value=q;s.oninput=()=>{q=s.value.trim();m.querySelector(".list").outerHTML=listBody(tab)}}
 }
@@ -268,7 +293,7 @@ function home(){
   const unknown=data.jobs.filter(j=>!j.paid||j.paid==="לא ידוע");
   const open=data.debts.filter(d=>d.paid!=="שולם"), debtSum=open.reduce((a,d)=>a+num(d.amount),0);
   const tax=open.filter(d=>TAX.includes(d.cat));
-  const low=data.stock.filter(s=>num(s.qty)<=num(s.min_qty));
+  const low=data.stock.filter(s=>num(s.min_qty)>0&&num(s.qty)<=num(s.min_qty));
   const tasks=data.tasks.filter(t=>t.done!=="בוצע").sort((a,b)=>(a.date||"9").localeCompare(b.date||"9"));
   const y=String(new Date().getFullYear());
   const yearJobs=data.jobs.filter(j=>(j.date||"").startsWith(y));
@@ -303,7 +328,8 @@ function quotesView(){
 }
 const FILTERS={
  jobs:[["all","הכל"],["owed","חייבים"],["unknown","לא ידוע"],["paid","שולם"]],
- stock:[["all","הכל"],["low","חסר"]],
+ stock:[["all","הכל"],["have","יש במלאי"],["low","חסר"],["morning","מ-Morning"]],
+ projects:[["active","פעילים"],["done","הסתיימו"],["all","הכל"]],
  tasks:[["open","פתוח"],["done","בוצע"],["all","הכל"]],
  debts:[["open","פתוח"],["tax","מיסים"],["paid","שולם"],["all","הכל"]],
  expenses:[["all","הכל"],["year","השנה"],["month","החודש"]]
@@ -313,7 +339,9 @@ function pass(k,x){
   if(q){const s=Object.values(x).join(" ");if(!s.includes(q))return false}
   switch(k+":"+f){
    case "jobs:owed":return owedOf(x)>0; case "jobs:unknown":return !x.paid||x.paid==="לא ידוע"; case "jobs:paid":return x.paid==="כן";
-   case "stock:low":return num(x.qty)<=num(x.min_qty);
+   case "stock:low":return num(x.min_qty)>0&&num(x.qty)<=num(x.min_qty);
+   case "stock:have":return num(x.qty)>0; case "stock:morning":return !!x.morning_item_id;
+   case "projects:active":return x.status!=="הסתיים"; case "projects:done":return x.status==="הסתיים";
    case "tasks:open":return x.done!=="בוצע"; case "tasks:done":return x.done==="בוצע";
    case "debts:open":return x.paid!=="שולם"; case "debts:paid":return x.paid==="שולם"; case "debts:tax":return TAX.includes(x.cat);
    case "expenses:year":return (x.date||"").startsWith(String(new Date().getFullYear())); case "expenses:month":return (x.date||"").startsWith(today().slice(0,7));
@@ -323,6 +351,8 @@ function pass(k,x){
 function sorted(k){
   const a=data[k].slice();
   if(k==="jobs"||k==="expenses")a.sort((x,y)=>(y.date||"").localeCompare(x.date||""));
+  else if(k==="projects")a.sort((x,y)=>String(y.created_at).localeCompare(String(x.created_at)));
+  else if(k==="stock")a.sort((x,y)=>(num(y.qty)>0)-(num(x.qty)>0)||String(x.name||"").localeCompare(String(y.name||""),"he"));
   else if(k==="tasks")a.sort((x,y)=>(x.date||"9").localeCompare(y.date||"9"));
   else if(k==="debts")a.sort((x,y)=>num(y.amount)-num(x.amount));
   else a.sort((x,y)=>String(x.name||"").localeCompare(String(y.name||""),"he"));
@@ -330,7 +360,9 @@ function sorted(k){
 }
 function listView(k){
   const cur=filt[k]||FILTERS[k][0][0];
-  return `<div class="bar"><h2 style="flex:1">${TABS.find(t=>t[0]===k)[1]}</h2><button class="btn" type="button" data-new="${k}">+ ${SCHEMA[k].title}</button></div>
+  const extra=k==="stock"?`<div class="bar"><button class="btn" type="button" id="scanBtn" style="flex:1">📷 סריקת ברקוד</button><button class="btn ghost" type="button" id="pullItems">משיכת פריטים מ-Morning</button></div>`:"";
+  return `<div class="bar"><h2 style="flex:1">${TABS.find(t=>t[0]===k)[1]}</h2><button class="btn${k==="stock"?" ghost":""}" type="button" data-new="${k}">+ ${SCHEMA[k].title}</button></div>
+  ${extra}
   <div class="bar"><input id="q" type="search" placeholder="חיפוש" aria-label="חיפוש"></div>
   <div class="filters" role="group" aria-label="סינון">${FILTERS[k].map(([v,l])=>`<button type="button" class="chipbtn" data-filt="${v}" aria-pressed="${v===cur}">${l}</button>`).join("")}</div>
   ${listBody(k)}`;
@@ -339,6 +371,7 @@ const EMPTY={
  jobs:"עוד אין עבודות. לחץ \"+ עבודה\" כדי להוסיף.",
  stock:"המלאי ריק. הוסף את מה שיש במחסן וברכב: מצלמות, NVR, כבלים, קופסאות, סוויצ׳ים. לכל פריט אפשר להגדיר כמות מינימום ולקבל התראה.",
  tasks:"אין משימות. הוסף התקנה, ביקור או תיקון עם תאריך.",
+ projects:"עוד אין פרויקטים. לחץ \"+ פרויקט\", צלם את תוכנית המהנדס וסמן עליה מצלמות, נקודות רשת, WiFi ואודיו.",
  debts:"אין חובות רשומים.",
  expenses:"אין הוצאות. הוסף קנייה מספק עם הסכום והמע״מ."
 };
@@ -357,33 +390,46 @@ function row(k,x){
   let t="",s="",n="",p="";
   if(k==="jobs"){const o=owedOf(x);t=x.client||"ללא שם";s=[x.place,x.work].filter(Boolean).join(" · ")+(x.date?` · ${heDate(x.date)}`:"");n=x.price?ils(x.price):"";
     p=o>0?`<span class="pill bad">חייב ${ils(o)}</span>`:x.paid==="כן"?`<span class="pill good">שולם</span>`:`<span class="pill warn">לא ידוע</span>`}
-  if(k==="stock"){const lowv=num(x.qty)<=num(x.min_qty);t=x.name;s=[x.supplier,x.unit_cost?ils(x.unit_cost)+" ליח׳":""].filter(Boolean).join(" · ");n=`${num(x.qty)} יח׳`;p=lowv?`<span class="pill bad">להזמין</span>`:""}
+  if(k==="stock"){const lowv=num(x.min_qty)>0&&num(x.qty)<=num(x.min_qty);t=x.name;s=[x.category,x.brand,x.sell_price?"מכירה "+ils(x.sell_price):"",x.barcode?"ברקוד ✓":""].filter(Boolean).join(" · ");n=`${num(x.qty)} יח׳`;
+    p=(lowv?`<span class="pill bad">להזמין</span> `:"")+(x.morning_item_id?`<span class="pill">Morning</span>`:"")}
+  if(k==="projects"){const pts=x.points||[];t=x.name;s=[x.client,x.address].filter(Boolean).join(" · ");n="";
+    p=`<span class="pill ${x.status==="הסתיים"?"good":""}">${esc(x.status||"תכנון")}</span> <span class="pill">${pts.length} סימונים</span>`}
   if(k==="tasks"){const late=x.done!=="בוצע"&&x.date&&x.date<today();t=x.title;s=[x.client,x.date?heDate(x.date):""].filter(Boolean).join(" · ");p=x.done==="בוצע"?`<span class="pill good">בוצע</span>`:late?`<span class="pill bad">באיחור</span>`:`<span class="pill">פתוח</span>`}
   if(k==="debts"){t=x.name;s=[x.cat,x.due?"לתשלום "+heDate(x.due):"",x.monthly?ils(x.monthly)+" לחודש":""].filter(Boolean).join(" · ");n=x.amount?ils(x.amount):"—";p=x.paid==="שולם"?`<span class="pill good">שולם</span>`:(x.amount?"":`<span class="pill warn">חסר סכום</span>`)}
   if(k==="expenses"){t=x.vendor||x.cat;s=[x.cat,x.for_job,x.date?heDate(x.date):""].filter(Boolean).join(" · ");n=x.amount?ils(x.amount):"";p=x.vat?`<span class="pill">מע״מ ${ils(x.vat)}</span>`:""}
+  if(k==="projects")return `<button type="button" class="row" data-open-project="${esc(x.id)}"><span class="t">${esc(t)}</span><span class="n"></span><span class="s">${esc(s)}</span><span class="p">${p}</span></button>`;
   return `<button type="button" class="row" data-edit="${k}" data-id="${esc(x.id)}"><span class="t">${esc(t)}</span><span class="n">${n}</span><span class="s">${esc(s)}</span><span class="p">${p}</span></button>`;
 }
 
 /* ---------- edit sheet ---------- */
-function openSheet(k,id){
-  const x=id?data[k].find(d=>d.id===id):{}; if(!x)return;
+function openSheet(k,id,prefill,note){
+  const x=id?data[k].find(d=>d.id===id):Object.assign({},prefill||{}); if(!x)return;
   const F=SCHEMA[k].fields;
   const field=([key,label,type,req,opts])=>{
     let v=x[key]??(key==="date"&&!id?today():"");
     const idA=`f_${key}`;
+    if(k==="stock"&&key==="qty")return `<div class="f"><label for="${idA}">${label}</label><div class="qtyrow"><button type="button" data-q="-1" aria-label="פחות">−</button><input id="${idA}" name="${key}" type="number" inputmode="decimal" step="any" value="${esc(v)}"><button type="button" data-q="1" aria-label="יותר">+</button></div></div>`;
     if(type==="select")return `<div class="f"><label for="${idA}">${label}</label><select id="${idA}" name="${key}">${opts.map(o=>`<option ${o===v?"selected":""}>${esc(o)}</option>`).join("")}</select></div>`;
     if(type==="textarea")return `<div class="f"><label for="${idA}">${label}</label><textarea id="${idA}" name="${key}">${esc(v)}</textarea></div>`;
     const it=type==="num"?'type="number" inputmode="decimal" step="any"':type==="date"?'type="date"':type==="tel"?'type="tel" dir="ltr"':'type="text"';
     return `<div class="f"><label for="${idA}">${label}</label><input id="${idA}" name="${key}" ${it} value="${esc(v)}" ${req?"required":""}></div>`;
   };
   const el=$("#sheet");
-  el.innerHTML=`<form id="edit" novalidate><h3>${id?"עריכת ":""}${SCHEMA[k].title}</h3>${F.map(field).join("")}
+  const linkable=(k==="stock"&&!id&&x.barcode)?data.stock.filter(s=>!s.barcode).sort((a,b)=>String(a.name).localeCompare(String(b.name),"he")):[];
+  const linkSel=linkable.length?`<div class="f"><label for="f_link">או: לשייך את הברקוד לפריט שכבר קיים</label><select id="f_link"><option value="">— פריט חדש —</option>${linkable.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join("")}</select></div>`:"";
+  const morningBtn=(k==="stock"&&id&&!x.morning_item_id)?`<button class="btn ghost" type="button" data-push>הוספה לרשימת הפריטים ב-Morning</button>`:"";
+  el.innerHTML=`<form id="edit" novalidate><h3>${id?"עריכת ":""}${SCHEMA[k].title}</h3>${note?`<div class="note">${esc(note)}</div>`:""}${linkSel}${F.map(field).join("")}
+   ${morningBtn}
    <div class="actions"><button class="btn" type="submit">שמירה</button><button class="btn ghost" type="button" data-close>סגירה</button>
    ${id?`<button class="btn danger" type="button" data-del>מחיקה</button>`:""}</div></form>`;
   el.hidden=false;
   const form=$("#edit");
   el.onclick=async e=>{
     if(e.target===el||e.target.closest("[data-close]")){el.hidden=true;return}
+    const qb=e.target.closest("[data-q]");if(qb){const i=form.elements.qty;i.value=Math.max(0,num(i.value)+Number(qb.dataset.q));return}
+    if(e.target.closest("[data-push]")){const b=e.target.closest("[data-push]");b.disabled=true;b.textContent="שולח ל-Morning…";
+      const {data:r,error}=await sb.functions.invoke("items",{body:{action:"push",id}});
+      toast(error?"לא הצלחתי להוסיף ל-Morning":(r&&r.message)||"נוסף");el.hidden=true;await loadAll();return}
     const del=e.target.closest("[data-del]");
     if(del){if(del.dataset.sure){const {error}=await sb.from(k).delete().eq("id",id);if(error){toast("המחיקה נכשלה");return}toast("נמחק");el.hidden=true;await loadAll()}
       else{del.dataset.sure=1;del.textContent="ללחוץ שוב למחיקה"}}
@@ -395,17 +441,159 @@ function openSheet(k,id){
       if(type==="num")v=v===""?null:Number(v);else if(type==="date")v=v||null;body[key]=v}
     body.updated_at=new Date().toISOString();
     const btn=form.querySelector("[type=submit]");btn.disabled=true;
-    const {error}=id?await sb.from(k).update(body).eq("id",id):await sb.from(k).insert(body);
+    const link=form.querySelector("#f_link")?.value;
+    let res;
+    if(link){const t=data.stock.find(s=>s.id===link);res=await sb.from("stock").update({barcode:body.barcode,qty:num(t&&t.qty)+num(body.qty),updated_at:body.updated_at}).eq("id",link).select().single()}
+    else res=id?await sb.from(k).update(body).eq("id",id).select().single():await sb.from(k).insert(body).select().single();
     btn.disabled=false;
-    if(error){toast("השמירה נכשלה. נסה שוב.");return}
+    if(res.error){toast("השמירה נכשלה. נסה שוב.");return}
     toast("נשמר");el.hidden=true;await loadAll();
+    if(k==="projects"&&!id&&res.data){curProject=res.data.id;render()}
   };
+}
+
+/* ---------- barcode scanner ---------- */
+function loadScript(src){return new Promise((ok,no)=>{if(document.querySelector(`script[src="${src}"]`))return ok();const s=document.createElement("script");s.src=src;s.onload=ok;s.onerror=no;document.head.appendChild(s)})}
+async function startScan(){
+  const ov=document.createElement("div");ov.className="scan";
+  ov.innerHTML=`<video playsinline muted autoplay></video><div class="frame"></div><div class="hint">כוון את הברקוד למסגרת</div>
+   <div class="bar2"><span id="scanMsg">פותח מצלמה…</span><span style="display:flex;gap:8px"><button class="btn ghost" type="button" id="manualCode">הקלדה</button><button class="btn" type="button" id="closeScan">סגירה</button></span></div>`;
+  document.body.appendChild(ov);
+  const video=ov.querySelector("video"),msgEl=ov.querySelector("#scanMsg");
+  let done=false,stream=null,timer=null,reader=null;
+  const stop=()=>{done=true;clearInterval(timer);try{reader&&reader.reset()}catch(e){}if(stream)stream.getTracks().forEach(t=>t.stop());if(video.srcObject){try{video.srcObject.getTracks().forEach(t=>t.stop())}catch(e){}}ov.remove()};
+  const found=code=>{if(done)return;try{navigator.vibrate&&navigator.vibrate(80)}catch(e){}stop();handleBarcode(code)};
+  ov.querySelector("#closeScan").onclick=stop;
+  ov.querySelector("#manualCode").onclick=()=>{stop();manualBarcode()};
+  try{
+    if("BarcodeDetector" in window){
+      stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});
+      video.srcObject=stream;await video.play();
+      const det=new BarcodeDetector({formats:["ean_13","ean_8","upc_a","upc_e","code_128","code_39","itf","qr_code"]});
+      msgEl.textContent="סורק…";
+      timer=setInterval(async()=>{if(done)return;try{const r=await det.detect(video);if(r&&r[0])found(r[0].rawValue)}catch(e){}},250);
+    }else{
+      await loadScript("https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js");
+      reader=new ZXing.BrowserMultiFormatReader();
+      msgEl.textContent="סורק…";
+      await reader.decodeFromConstraints({video:{facingMode:{ideal:"environment"}},audio:false},video,(res)=>{if(res)found(res.getText())});
+    }
+  }catch(e){msgEl.textContent="אין גישה למצלמה. אשר מצלמה בהגדרות, או לחץ הקלדה."}
+}
+function manualBarcode(){
+  const el=$("#sheet");
+  el.innerHTML=`<form id="mb" novalidate><h3>הקלדת ברקוד</h3><div class="f"><label for="mbc">המספר שמתחת לפסים</label><input id="mbc" inputmode="numeric" dir="ltr"></div>
+   <div class="actions"><button class="btn" type="submit">חיפוש</button><button class="btn ghost" type="button" data-close>סגירה</button></div></form>`;
+  el.hidden=false;el.onclick=e=>{if(e.target===el||e.target.closest("[data-close]"))el.hidden=true};
+  $("#mb").onsubmit=e=>{e.preventDefault();const c=$("#mbc").value.trim();if(!c)return;el.hidden=true;handleBarcode(c)};
+}
+async function handleBarcode(code){
+  code=String(code||"").trim();if(!code)return;
+  const hit=data.stock.find(s=>s.barcode&&s.barcode===code);
+  if(hit){openSheet("stock",hit.id,null,`נמצא במלאי: ${hit.name}. עדכן את הכמות ושמור.`);return}
+  toast("מחפש את המוצר…");
+  const pre={barcode:code,qty:1};let note="מוצר חדש. כתוב שם בעברית ושמור, או שייך אותו לפריט קיים. מהפעם הבאה הסריקה תזהה אותו מיד.";
+  try{const {data:r}=await sb.functions.invoke("items",{body:{action:"barcode",code}});
+    if(r&&r.found){pre.name=(r.item.name||"").slice(0,60);pre.brand=[r.item.brand,r.item.model].filter(Boolean).join(" ");pre.notes=r.item.description||"";note="נמצא במאגר המוצרים הבינלאומי. אפשר לשנות את השם לעברית לפני השמירה."}}catch(e){}
+  openSheet("stock",null,pre,note);
+}
+
+/* ---------- projects: engineer plan with markers ---------- */
+let ptType="cam",selPt=null;const planUrl={};let saveT=null;
+function curP(){return data.projects.find(x=>x.id===curProject)}
+function countsHtml(p){const pts=p.points||[];return Object.keys(PT).filter(k=>k!=="other"||pts.some(x=>x.type===k)).map(k=>`<div class="tile"><span>${PT[k].l}</span><b>${pts.filter(x=>x.type===k).length}</b></div>`).join("")}
+async function projectView(m){
+  const p=curP();if(!p){curProject=null;render();return}
+  p.points=p.points||[];
+  m.innerHTML=`<div class="bar"><button class="btn ghost" type="button" id="backProj">→ פרויקטים</button><h2 style="flex:1;min-width:0;overflow-wrap:anywhere">${esc(p.name)}</h2><button class="btn ghost" type="button" data-edit="projects" data-id="${esc(p.id)}">פרטים</button></div>
+   ${[p.client,p.address,p.status].some(Boolean)?`<div class="note">${esc([p.client,p.address,p.status].filter(Boolean).join(" · "))}</div>`:""}
+   ${p.plan_path?`
+   <div class="palette" role="group" aria-label="מה לסמן">${Object.entries(PT).map(([k,v])=>`<button type="button" data-pt="${k}" aria-pressed="${k===ptType}"><span class="dot" style="background:${v.c}">${v.s}</span>${v.l}</button>`).join("")}</div>
+   <div class="plan" id="plan"><img id="planImg" alt="תוכנית המהנדס" crossorigin="anonymous"><div id="mks"></div></div>
+   <div id="selBox"><div class="note" id="planHint">לחץ על התוכנית כדי להוסיף ${PT[ptType].l}. לחיצה על סימון בוחרת אותו לעריכה או מחיקה.</div></div>
+   <div class="counts" id="counts">${countsHtml(p)}</div>
+   <div class="bar"><button class="btn" type="button" id="sharePlan" style="flex:1">שיתוף התוכנית עם הסימונים</button><label class="btn ghost" style="text-align:center">החלפת תמונה<input type="file" accept="image/*" id="planFile" hidden></label></div>`
+   :`<label class="tile" style="text-align:center;padding:32px 16px;justify-items:center"><b style="font-size:34px">📐</b><span style="font-size:15px;color:var(--fg);font-weight:700">צלם או בחר את תוכנית המהנדס</span><span>אחר כך מסמנים עליה מצלמות, נקודות רשת, WiFi ואודיו</span><input type="file" accept="image/*" id="planFile" hidden></label>`}
+   ${p.notes?`<div class="note">${esc(p.notes)}</div>`:""}`;
+  const f=$("#planFile");if(f)f.onchange=()=>f.files[0]&&uploadPlan(p,f.files[0]);
+  if(!p.plan_path)return;
+  const img=$("#planImg");
+  if(!planUrl[p.plan_path]){const {data:s}=await sb.storage.from("plans").createSignedUrl(p.plan_path,3600*12);planUrl[p.plan_path]=s&&s.signedUrl}
+  img.src=planUrl[p.plan_path];
+  drawMarkers(p);
+  $("#plan").onclick=e=>{
+    if(e.target.closest(".mk"))return;
+    const r=img.getBoundingClientRect();const x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height;
+    if(x<0||x>1||y<0||y>1)return;
+    const n=p.points.filter(q=>q.type===ptType).length+1;
+    p.points.push({id:Math.random().toString(36).slice(2,9),type:ptType,x:+x.toFixed(4),y:+y.toFixed(4),label:PT[ptType].s+n});
+    selPt=null;afterPoints(p);
+  };
+}
+function drawMarkers(p){
+  const box=$("#mks");if(!box)return;
+  box.innerHTML=p.points.map(pt=>`<button type="button" class="mk" data-mk="${pt.id}" aria-pressed="${pt.id===selPt}" aria-label="${esc(PT[pt.type].l+" "+(pt.label||""))}" style="left:${pt.x*100}%;top:${pt.y*100}%;background:${PT[pt.type].c}">${esc(pt.label||PT[pt.type].s)}</button>`).join("");
+}
+function selBox(p){
+  const pt=p.points.find(x=>x.id===selPt);const b=$("#selBox");if(!b)return;
+  if(!pt){b.innerHTML=`<div class="note">לחץ על התוכנית כדי להוסיף ${PT[ptType].l}. לחיצה על סימון בוחרת אותו לעריכה או מחיקה.</div>`;return}
+  b.innerHTML=`<div class="list" style="padding:12px;display:grid;gap:10px"><div class="f"><label for="ptLabel">שם הסימון (${PT[pt.type].l})</label><input id="ptLabel" value="${esc(pt.label||"")}"></div>
+   <div class="actions"><button class="btn" type="button" id="ptSave">שמירה</button><button class="btn danger" type="button" id="ptDel">מחיקת הסימון</button><button class="btn ghost" type="button" id="ptCancel">ביטול</button></div></div>`;
+}
+function afterPoints(p){drawMarkers(p);selBox(p);const c=$("#counts");if(c)c.innerHTML=countsHtml(p);
+  clearTimeout(saveT);saveT=setTimeout(async()=>{const {error}=await sb.from("projects").update({points:p.points,updated_at:new Date().toISOString()}).eq("id",p.id);if(error)toast("השמירה נכשלה – בדוק אינטרנט")},600)}
+async function uploadPlan(p,file){
+  toast("מעלה את התוכנית…");
+  try{
+    const bmp=await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=URL.createObjectURL(file)});
+    const max=2600,sc=Math.min(1,max/Math.max(bmp.naturalWidth,bmp.naturalHeight));
+    const c=document.createElement("canvas");c.width=Math.round(bmp.naturalWidth*sc);c.height=Math.round(bmp.naturalHeight*sc);
+    c.getContext("2d").drawImage(bmp,0,0,c.width,c.height);
+    const blob=await new Promise(ok=>c.toBlob(ok,"image/jpeg",.85));
+    const path=`${p.id}/${Date.now()}.jpg`;
+    const {error}=await sb.storage.from("plans").upload(path,blob,{contentType:"image/jpeg",upsert:false});
+    if(error)throw error;
+    await sb.from("projects").update({plan_path:path,updated_at:new Date().toISOString()}).eq("id",p.id);
+    toast("התוכנית נשמרה");await loadAll();
+  }catch(e){toast("ההעלאה נכשלה. נסה שוב.")}
+}
+async function sharePlan(p){
+  toast("מכין תמונה…");
+  try{
+    const img=await new Promise((ok,no)=>{const i=new Image();i.crossOrigin="anonymous";i.onload=()=>ok(i);i.onerror=no;i.src=planUrl[p.plan_path]});
+    const W=img.naturalWidth,H=img.naturalHeight,legendH=Math.round(W*.09);
+    const c=document.createElement("canvas");c.width=W;c.height=H+legendH;const g=c.getContext("2d");
+    g.fillStyle="#fff";g.fillRect(0,0,W,H+legendH);g.drawImage(img,0,0);
+    const R=Math.max(14,Math.round(W/70));
+    g.textAlign="center";g.textBaseline="middle";
+    for(const pt of p.points){const x=pt.x*W,y=pt.y*H;g.beginPath();g.arc(x,y,R,0,Math.PI*2);g.fillStyle=PT[pt.type].c;g.fill();g.lineWidth=Math.max(2,R/6);g.strokeStyle="#fff";g.stroke();
+      g.fillStyle="#fff";g.font=`700 ${Math.round(R*.75)}px Heebo, Arial`;g.fillText(pt.label||PT[pt.type].s,x,y+1)}
+    g.fillStyle="#0c1d47";g.fillRect(0,H,W,legendH);g.fillStyle="#fff";g.textAlign="right";
+    const fs=Math.round(legendH*.32);g.font=`700 ${fs}px Heebo, Arial`;g.direction="rtl";
+    const parts=Object.keys(PT).map(k=>[k,p.points.filter(x=>x.type===k).length]).filter(x=>x[1]).map(([k,n])=>`${PT[k].l}: ${n}`);
+    g.fillText(`אהרן מערכות · ${p.name}`,W-fs,H+legendH*.33);g.font=`500 ${Math.round(fs*.85)}px Heebo, Arial`;g.fillText(parts.join("   ·   ")||"אין סימונים",W-fs,H+legendH*.72);
+    const blob=await new Promise(ok=>c.toBlob(ok,"image/jpeg",.9));
+    const file=new File([blob],`${p.name||"plan"}.jpg`,{type:"image/jpeg"});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:p.name})}
+    else{const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=file.name;document.body.appendChild(a);a.click();a.remove()}
+  }catch(e){if(e&&e.name!=="AbortError")toast("לא הצלחתי להכין את התמונה")}
 }
 
 document.addEventListener("click",async e=>{
   if(e.target.closest("#logout")){await sb.auth.signOut();return}
+  if(e.target.closest("#backProj")){curProject=null;selPt=null;render();return}
+  const ptb=e.target.closest("[data-pt]");if(ptb){ptType=ptb.dataset.pt;document.querySelectorAll("[data-pt]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.pt===ptType));const p=curP();if(p&&!selPt)selBox(p);return}
+  const mk=e.target.closest("[data-mk]");if(mk){selPt=mk.dataset.mk===selPt?null:mk.dataset.mk;const p=curP();drawMarkers(p);selBox(p);return}
+  if(e.target.closest("#ptSave")){const p=curP(),pt=p.points.find(x=>x.id===selPt);if(pt)pt.label=$("#ptLabel").value.trim().slice(0,12);selPt=null;afterPoints(p);return}
+  if(e.target.closest("#ptDel")){const p=curP();p.points=p.points.filter(x=>x.id!==selPt);selPt=null;afterPoints(p);return}
+  if(e.target.closest("#ptCancel")){const p=curP();selPt=null;drawMarkers(p);selBox(p);return}
+  if(e.target.closest("#sharePlan")){sharePlan(curP());return}
   const g=e.target.closest("[data-go]");if(g){e.preventDefault();if(g.dataset.f)filt[g.dataset.go]=g.dataset.f;go(g.dataset.go);return}
   const n=e.target.closest("[data-new]");if(n){openSheet(n.dataset.new);return}
+  const op=e.target.closest("[data-open-project]");if(op){curProject=op.dataset.openProject;render();window.scrollTo(0,0);return}
+  if(e.target.closest("#scanBtn")){startScan();return}
+  if(e.target.closest("#pullItems")){const b=e.target.closest("#pullItems");b.disabled=true;b.textContent="מושך…";
+    const {data:r,error}=await sb.functions.invoke("items",{body:{action:"pull"}});toast(error?"המשיכה נכשלה":(r&&r.message)||"עודכן");await loadAll();return}
   const ed=e.target.closest("[data-edit]");if(ed){openSheet(ed.dataset.edit,ed.dataset.id);return}
   const f=e.target.closest("[data-filt]");if(f){filt[tab]=f.dataset.filt;render()}
 });
