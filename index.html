@@ -130,6 +130,7 @@ nav button[aria-current=page]{color:var(--accent)}
       <button class="btn ghost" type="button" id="resetBtn">שכחתי סיסמה</button>
     </div>
     <p style="font-size:13px">כשהאייפון שואל אם לשמור את הסיסמה, אשר. מהפעם הבאה Face ID ימלא אותה לבד.</p>
+    <div class="note envNote" hidden style="text-align:right"></div>
     <p id="loginMsg" role="status"></p>
   </form>
 </section>
@@ -141,6 +142,7 @@ nav button[aria-current=page]{color:var(--accent)}
     <button class="btn" type="button" id="unlockBtn" style="padding:14px">כניסה עם Face ID</button>
     <button class="btn ghost" type="button" id="lockPass">כניסה עם סיסמה</button>
     <p id="lockMsg" role="status" style="margin:0;color:var(--muted)"></p>
+    <div class="note envNote" hidden style="text-align:right"></div>
   </div>
 </section>
 
@@ -211,6 +213,17 @@ const openInvoices=()=>data.morning_docs.filter(d=>(d.type===300||d.type===305)&
 const openQuotes=()=>data.morning_docs.filter(d=>d.type===10&&d.status===0);
 
 /* ---------- auth ---------- */
+/* Is this the home-screen app? In-app browsers (links from chats/mail) forget the login and block Face ID. */
+const isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+const standalone=window.navigator.standalone===true||matchMedia("(display-mode: standalone)").matches;
+const inApp=/FBAN|FBAV|Instagram|WhatsApp|Line\/|GSA\/|CriOS|FxiOS|EdgiOS|Claude/i.test(navigator.userAgent);
+if(isIOS&&!standalone){
+  const t=inApp
+   ?"האפליקציה נפתחה מתוך דפדפן זמני (מקישור בצ'אט או במייל), ולכן היא לא זוכרת אותך ו-Face ID לא עובד. לחץ על ⋯ או על סמל המצפן, בחר \"פתח ב-Safari\", ואז שיתוף ← \"הוספה למסך הבית\". מאז נכנסים רק מהאייקון."
+   :"כדי שהאפליקציה תזכור אותך ו-Face ID יעבוד, צריך להוסיף אותה למסך הבית: בתחתית Safari לחץ על שיתוף (ריבוע עם חץ) ← \"הוספה למסך הבית\". מאז נכנסים רק מהאייקון, לא מהקישור.";
+  document.querySelectorAll(".envNote").forEach(n=>{n.textContent=t;n.hidden=false});
+}
+
 /* Face ID: a passkey on this phone unlocks the saved session */
 const FID="aharon-faceid";
 const getFid=()=>{try{return localStorage.getItem(FID)}catch(e){return null}};
@@ -225,15 +238,21 @@ async function enableFaceId(){
       pubKeyCredParams:[{type:"public-key",alg:-7},{type:"public-key",alg:-257}],
       authenticatorSelection:{authenticatorAttachment:"platform",userVerification:"required",residentKey:"preferred"},timeout:60000}});
     localStorage.setItem(FID,b64(cred.rawId));toast("Face ID הופעל");return true;
-  }catch(e){toast("Face ID לא הופעל");return false}
+  }catch(e){toast("Face ID לא הופעל: "+fidErr(e));return false}
 }
 async function unlock(){
   $("#lockMsg").textContent="";
   try{
     await navigator.credentials.get({publicKey:{challenge:rnd(32),allowCredentials:[{type:"public-key",id:unb64(getFid())}],userVerification:"required",timeout:60000}});
     $("#lock").hidden=true;showApp();
-  }catch(e){$("#lockMsg").textContent="Face ID לא אושר. נסה שוב או היכנס עם סיסמה."}
+  }catch(e){$("#lockMsg").textContent="Face ID לא אושר ("+fidErr(e)+"). לחץ שוב על הכפתור, או היכנס עם סיסמה."}
 }
+function fidErr(e){const n=e&&e.name||"";
+  if(n==="NotAllowedError")return "בוטל או שהאייפון לא אפשר כאן";
+  if(n==="SecurityError")return "הדפדפן הזה חוסם Face ID – פתח מהאייקון במסך הבית";
+  if(n==="InvalidStateError")return "כבר מוגדר במכשיר הזה";
+  if(n==="NotSupportedError")return "המכשיר לא תומך";
+  return n||"שגיאה לא ידועה"}
 $("#unlockBtn").addEventListener("click",unlock);
 $("#lockPass").addEventListener("click",async()=>{try{localStorage.removeItem(FID)}catch(e){}$("#lock").hidden=true;await sb.auth.signOut();showLogin()});
 async function offerFaceId(){
@@ -248,7 +267,7 @@ async function offerFaceId(){
 
 async function boot(){
   const {data:{session}}=await sb.auth.getSession();
-  if(session&&getFid()){$("#login").hidden=true;$("#lock").hidden=false;if(location.hash!=="#reset")unlock()}
+  if(session&&getFid()){$("#login").hidden=true;$("#lock").hidden=false}
   else if(session){showApp()}else{showLogin()}
   sb.auth.onAuthStateChange((ev,s)=>{
     if(ev==="SIGNED_OUT")showLogin();
