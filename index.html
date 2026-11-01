@@ -121,6 +121,7 @@ nav button[aria-current=page]{color:var(--accent)}
   <form id="loginForm" novalidate>
     <img src="icon-192.png" alt="">
     <h1>אהרן מערכות · ניהול</h1>
+    <button class="btn" type="button" id="faceLoginBtn" hidden style="padding:14px">כניסה עם Face ID</button>
     <div class="f">
       <label for="email">מייל</label>
       <input id="email" type="email" inputmode="email" autocomplete="username" value="aharonsystems@gmail.com" dir="ltr">
@@ -184,8 +185,8 @@ const SCHEMA={
   ["work","פרטי עבודה","textarea"],["date","תאריך עבודה","date"],["price","מחיר גבייה ₪","num"],["cost","עלויות ₪","num"],
   ["profit","רווח בפועל ₪","num"],["paid","שולם?","select",0,["לא ידוע","כן","לא","חלקי"]],["paid_amount","כמה שולם ₪ (אם חלקי)","num"],
   ["receipt","הוצאה קבלה?","select",0,["","כן","לא"]],["notes","הערות","textarea"]]},
- stock:{title:"פריט מלאי",fields:[["name","שם הפריט","text",1],["category","קטגוריה","select",0,["","מצלמות","מקליטים","תקשורת","כבלים","אביזרים","אזעקה","אינטרקום","בקרת כניסה","אודיו","מגברי קליטה","מ-Morning","אחר"]],
-  ["qty","כמות במלאי","num"],["min_qty","התראה מתחת ל־","num"],["brand","יצרן / דגם","text"],["barcode","ברקוד","text"],
+ stock:{title:"פריט מלאי",fields:[["name","שם בעברית","text",1],["name_en","שם באנגלית / כמו על המדבקה","text"],["model","דגם","text"],["category","קטגוריה","select",0,["","מצלמות","מקליטים","תקשורת","כבלים","אביזרים","אזעקה","אינטרקום","בקרת כניסה","אודיו","מגברי קליטה","מ-Morning","אחר"]],
+  ["qty","כמות במלאי","num"],["min_qty","התראה מתחת ל־","num"],["brand","יצרן","text"],["barcode","ברקוד","text"],["serials","מספרים סידוריים (S/N)","textarea"],
   ["unit_cost","מחיר קנייה ליחידה ₪","num"],["sell_price","מחיר מכירה ₪","num"],["supplier","ספק","text"],["notes","הערות","textarea"]]},
  projects:{title:"פרויקט",fields:[["name","שם הפרויקט","text",1],["client","לקוח","text"],["address","כתובת","text"],
   ["status","סטטוס","select",0,["תכנון","הצעת מחיר","בביצוע","הסתיים"]],["notes","הערות","textarea"]]},
@@ -240,13 +241,22 @@ async function enableFaceId(){
     localStorage.setItem(FID,b64(cred.rawId));toast("Face ID הופעל");return true;
   }catch(e){toast("Face ID לא הופעל: "+fidErr(e));return false}
 }
+let fidBusy=false;
 async function unlock(){
-  $("#lockMsg").textContent="";
+  if(fidBusy)return;fidBusy=true;
   try{
     await navigator.credentials.get({publicKey:{challenge:rnd(32),allowCredentials:[{type:"public-key",id:unb64(getFid())}],userVerification:"required",timeout:60000}});
-    $("#lock").hidden=true;showApp();
-  }catch(e){$("#lockMsg").textContent="Face ID לא אושר ("+fidErr(e)+"). לחץ שוב על הכפתור, או היכנס עם סיסמה."}
+    fidBusy=false;$("#lock").hidden=true;showApp();
+  }catch(e){
+    fidBusy=false;
+    // Face ID failed or was cancelled: go straight to the password screen, keep a Face ID button there
+    $("#lock").hidden=true;$("#app").hidden=true;$("#login").hidden=false;
+    $("#faceLoginBtn").hidden=false;
+    msg("Face ID לא עבד ("+fidErr(e)+"). אפשר לנסות שוב בכפתור למעלה, או להיכנס עם סיסמה.");
+    setTimeout(()=>$("#pass").focus(),300);
+  }
 }
+$("#faceLoginBtn").addEventListener("click",()=>{msg("");unlock()});
 function fidErr(e){const n=e&&e.name||"";
   if(n==="NotAllowedError")return "בוטל או שהאייפון לא אפשר כאן";
   if(n==="SecurityError")return "הדפדפן הזה חוסם Face ID – פתח מהאייקון במסך הבית";
@@ -267,7 +277,7 @@ async function offerFaceId(){
 
 async function boot(){
   const {data:{session}}=await sb.auth.getSession();
-  if(session&&getFid()){$("#login").hidden=true;$("#lock").hidden=false}
+  if(session&&getFid()){$("#login").hidden=true;$("#lock").hidden=false;if(location.hash!=="#reset")unlock()}
   else if(session){showApp()}else{showLogin()}
   sb.auth.onAuthStateChange((ev,s)=>{
     if(ev==="SIGNED_OUT")showLogin();
@@ -446,7 +456,7 @@ function row(k,x){
   let t="",s="",n="",p="";
   if(k==="jobs"){const o=owedOf(x);t=x.client||"ללא שם";s=[x.place,x.work].filter(Boolean).join(" · ")+(x.date?` · ${heDate(x.date)}`:"");n=x.price?ils(x.price):"";
     p=o>0?`<span class="pill bad">חייב ${ils(o)}</span>`:x.paid==="כן"?`<span class="pill good">שולם</span>`:`<span class="pill warn">לא ידוע</span>`}
-  if(k==="stock"){const lowv=num(x.min_qty)>0&&num(x.qty)<=num(x.min_qty);t=x.name;s=[x.category,x.brand,x.sell_price?"מכירה "+ils(x.sell_price):"",x.barcode?"ברקוד ✓":""].filter(Boolean).join(" · ");n=`${num(x.qty)} יח׳`;
+  if(k==="stock"){const lowv=num(x.min_qty)>0&&num(x.qty)<=num(x.min_qty);t=x.name;s=[x.category,x.brand,x.model,x.sell_price?"מכירה "+ils(x.sell_price):"",x.barcode?"ברקוד ✓":""].filter(Boolean).join(" · ");n=`${num(x.qty)} יח׳`;
     p=(lowv?`<span class="pill bad">להזמין</span> `:"")+(x.morning_item_id?`<span class="pill">Morning</span>`:"")}
   if(k==="projects"){const pts=x.points||[];t=x.name;s=[x.client,x.address].filter(Boolean).join(" · ");n="";
     p=`<span class="pill ${x.status==="הסתיים"?"good":""}">${esc(x.status||"תכנון")}</span> <span class="pill">${pts.length} סימונים</span>`}
@@ -513,17 +523,21 @@ function loadScript(src){return new Promise((ok,no)=>{if(document.querySelector(
 async function startScan(){
   const ov=document.createElement("div");ov.className="scan";
   ov.innerHTML=`<video playsinline muted autoplay></video><div class="frame"></div><div class="hint">כוון את הברקוד למסגרת</div>
-   <div class="bar2"><span id="scanMsg">פותח מצלמה…</span><span style="display:flex;gap:8px"><button class="btn ghost" type="button" id="manualCode">הקלדה</button><button class="btn" type="button" id="closeScan">סגירה</button></span></div>`;
+   <div class="bar2"><span id="scanMsg" style="min-width:0">פותח מצלמה…</span><span style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn" type="button" id="snapLabel">📸 צילום מדבקה</button><button class="btn ghost" type="button" id="manualCode">הקלדה</button><button class="btn ghost" type="button" id="closeScan">סגירה</button></span></div>`;
   document.body.appendChild(ov);
   const video=ov.querySelector("video"),msgEl=ov.querySelector("#scanMsg");
   let done=false,stream=null,timer=null,reader=null;
   const stop=()=>{done=true;clearInterval(timer);try{reader&&reader.reset()}catch(e){}if(stream)stream.getTracks().forEach(t=>t.stop());if(video.srcObject){try{video.srcObject.getTracks().forEach(t=>t.stop())}catch(e){}}ov.remove()};
-  const found=code=>{if(done)return;try{navigator.vibrate&&navigator.vibrate(80)}catch(e){}stop();handleBarcode(code)};
+  const snap=()=>{try{if(!video.videoWidth)return null;const c=document.createElement("canvas");c.width=video.videoWidth;c.height=video.videoHeight;c.getContext("2d").drawImage(video,0,0);return c}catch(e){return null}};
+  const found=code=>{if(done)return;try{navigator.vibrate&&navigator.vibrate(80)}catch(e){}const c=snap();stop();handleBarcode(code,c)};
   ov.querySelector("#closeScan").onclick=stop;
+  ov.querySelector("#snapLabel").onclick=async()=>{const c=snap();if(!c){msgEl.textContent="המצלמה עוד לא מוכנה";return}
+    let code="";try{if("BarcodeDetector" in window){const r=await new BarcodeDetector().detect(c);code=r&&r[0]?r[0].rawValue:""}else if(window.ZXing){const r=await new ZXing.BrowserMultiFormatReader().decodeFromImageUrl(c.toDataURL("image/jpeg",.9));code=r?r.getText():""}}catch(e){}
+    stop();handleBarcode(code,c,true)};
   ov.querySelector("#manualCode").onclick=()=>{stop();manualBarcode()};
   try{
     if("BarcodeDetector" in window){
-      stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});
+      stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}},audio:false});
       video.srcObject=stream;await video.play();
       const det=new BarcodeDetector({formats:["ean_13","ean_8","upc_a","upc_e","code_128","code_39","itf","qr_code"]});
       msgEl.textContent="סורק…";
@@ -532,7 +546,7 @@ async function startScan(){
       await loadScript("https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js");
       reader=new ZXing.BrowserMultiFormatReader();
       msgEl.textContent="סורק…";
-      await reader.decodeFromConstraints({video:{facingMode:{ideal:"environment"}},audio:false},video,(res)=>{if(res)found(res.getText())});
+      await reader.decodeFromConstraints({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}},audio:false},video,(res)=>{if(res)found(res.getText())});
     }
   }catch(e){msgEl.textContent="אין גישה למצלמה. אשר מצלמה בהגדרות, או לחץ הקלדה."}
 }
@@ -543,21 +557,98 @@ function manualBarcode(){
   el.hidden=false;el.onclick=e=>{if(e.target===el||e.target.closest("[data-close]"))el.hidden=true};
   $("#mb").onsubmit=e=>{e.preventDefault();const c=$("#mbc").value.trim();if(!c)return;el.hidden=true;handleBarcode(c)};
 }
-async function handleBarcode(code){
-  code=String(code||"").trim();if(!code)return;
-  const hit=data.stock.find(s=>s.barcode&&s.barcode===code);
+/* read the sticker text: model, brand, serial */
+const TESS="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+async function readLabel(canvas){
+  await loadScript(TESS);
+  const {data:{text}}=await Tesseract.recognize(canvas,"eng");
+  return text||"";
+}
+function parseLabel(text){
+  const T=text.replace(/[|]/g,"I").replace(/[“”]/g,'"');
+  const up=T.toUpperCase();
+  const out={};
+  const brands=[["HIKVISION","Hikvision"],["DAHUA","Dahua"],["ALHUA","Dahua"],["PROVISION","Provision"],["UNIVIEW","Uniview"],["EZVIZ","EZVIZ"],["IMOU","Imou"],["TP-LINK","TP-Link"],["TPLINK","TP-Link"],["UBIQUITI","Ubiquiti"],["UNIFI","Ubiquiti"],["HILOOK","HiLook"],["WESTERN DIGITAL","Western Digital"],["SEAGATE","Seagate"],["RISCO","Risco"],["PIMA","Pima"],["PARADOX","Paradox"],["AJAX","Ajax"],["2N","2N"],["AXIS","Axis"]];
+  for(const [k,v] of brands)if(up.includes(k)){out.brand=v;break}
+  let m=T.match(/(?:MODEL|MOD\.?|P\/N|TYPE)\s*(?:NO\.?)?\s*[:：]?\s*([A-Z0-9][A-Z0-9\-\/().+]{4,})/i);
+  if(!m)m=up.match(/\b(DS-[0-9A-Z]{2,}[0-9A-Z\-\/()]*)/);
+  if(!m)m=up.match(/\b((?:DH-|DHI-)?(?:IPC|HAC|SD|NVR|XVR|DVR|VTO|VTH|PFS)[-0-9A-Z]{3,}[0-9A-Z\-\/()]*)/);
+  if(!m)m=up.match(/\b((?:WD|ST)[0-9]{2,}[A-Z0-9]{2,})\b/);
+  if(m)out.model=m[1].replace(/[.,;:]+$/,"");
+  const s=T.match(/(?:S\/N|SN|SERIAL(?:\s*NO\.?)?)\s*[:：]?\s*([A-Z0-9][A-Z0-9\-]{5,})/i);
+  if(s)out.serial=s[1];
+  if(!out.brand&&out.model){const md=out.model.toUpperCase();if(md.startsWith("DS-"))out.brand="Hikvision";else if(/^(DH-|DHI-|IPC-|HAC-|SD|NVR|XVR|VTO|VTH)/.test(md))out.brand="Dahua";else if(/^WD/.test(md))out.brand="Western Digital";else if(/^ST\d/.test(md))out.brand="Seagate"}
+  return out;
+}
+function hebrewName(brand,model){
+  const md=String(model||"").toUpperCase();let type="",mp="",cat="";
+  const dig=md.replace(/^[^0-9]*/,"").match(/\d{3,4}/);const d=dig?dig[0]:"";
+  if(/NVR|DS-7[6-9]|DS-96/.test(md)){const ch=(md.match(/(?:NVR\d{2}|DS-7\d)(\d{2})/)||[])[1];type="מקליט NVR"+(ch?` ${+ch} ערוצים`:"");cat="מקליטים"}
+  else if(/XVR|DVR|DS-72/.test(md)){type="מקליט DVR";cat="מקליטים"}
+  else if(/^(DH-)?SD|DS-2DE|PTZ/.test(md)){type="מצלמת PTZ ממונעת";cat="מצלמות"}
+  else if(/HFW|BULLET/.test(md)){type="מצלמת צינור";cat="מצלמות"}
+  else if(/HDBW|DOME/.test(md)){type="מצלמת כיפה";cat="מצלמות"}
+  else if(/HDW|TURRET|EYEBALL/.test(md)){type="מצלמת טורט";cat="מצלמות"}
+  else if(/DS-2CD/.test(md)){const t=(md.match(/DS-2CD\d([0-9A-Z])/)||[])[1];type=({"0":"מצלמת צינור","T":"מצלמת צינור","6":"מצלמת צינור","1":"מצלמת כיפה","7":"מצלמת כיפה","5":"מצלמת כיפה","3":"מצלמת טורט"})[t]||"מצלמת IP";cat="מצלמות"}
+  else if(/VTO/.test(md)){type="אינטרקום – פאנל כניסה";cat="אינטרקום"}
+  else if(/VTH/.test(md)){type="אינטרקום – מסך פנימי";cat="אינטרקום"}
+  else if(/PFS|DS-3E|SWITCH|SG\d/.test(md)){type="סוויץ׳";cat="תקשורת"}
+  else if(/^(WD|ST)\d/.test(md)){type="דיסק קשיח";cat="מקליטים"}
+  if(cat==="מצלמות"&&d){const x=/DS-2CD/.test(md)?d[2]:d[1];if(x&&+x>=2&&+x<=8)mp=`${x}MP`}
+  return {name:[type||"מוצר",mp,brand,model].filter(Boolean).join(" ").trim(),category:cat};
+}
+async function handleBarcode(code,canvas,fromSnap){
+  code=String(code||"").trim();
+  const hit=code&&data.stock.find(s=>s.barcode&&s.barcode===code);
   if(hit){openSheet("stock",hit.id,null,`נמצא במלאי: ${hit.name}. עדכן את הכמות ושמור.`);return}
-  toast("מחפש את המוצר…");
-  const pre={barcode:code,qty:1};let note="מוצר חדש. כתוב שם בעברית ושמור, או שייך אותו לפריט קיים. מהפעם הבאה הסריקה תזהה אותו מיד.";
-  try{const {data:r}=await sb.functions.invoke("items",{body:{action:"barcode",code}});
-    if(r&&r.found){pre.name=(r.item.name||"").slice(0,60);pre.brand=[r.item.brand,r.item.model].filter(Boolean).join(" ");pre.notes=r.item.description||"";note="נמצא במאגר המוצרים הבינלאומי. אפשר לשנות את השם לעברית לפני השמירה."}}catch(e){}
+  const pre={qty:1};if(code)pre.barcode=code;
+  let note=code?"מוצר חדש. בדוק את הפרטים ושמור. מהפעם הבאה הסריקה תזהה אותו מיד.":"לא נמצא ברקוד בתמונה, אבל ניסיתי לקרוא את המדבקה.";
+  // 1) sticker text
+  if(canvas){
+    toast("קורא את המדבקה… (בפעם הראשונה זה לוקח כמה שניות)");
+    try{
+      const lab=parseLabel(await readLabel(canvas));
+      if(lab.model){
+        const same=data.stock.find(s=>s.model&&s.model.toUpperCase()===lab.model.toUpperCase());
+        if(same){openSheet("stock",same.id,code&&!same.barcode?{}:null,`הדגם ${lab.model} כבר במלאי (${same.name}). עדכן כמות ושמור.`+(code&&!same.barcode?" הברקוד יישמר לפריט.":""));
+          if(code&&!same.barcode){const f=$("#edit");if(f&&f.elements.barcode)f.elements.barcode.value=code}
+          if(lab.serial){const f=$("#edit");if(f&&f.elements.serials)f.elements.serials.value=[same.serials,lab.serial].filter(Boolean).join("\n")}
+          return}
+        const h=hebrewName(lab.brand,lab.model);
+        pre.model=lab.model;pre.brand=lab.brand||"";pre.name=h.name;pre.name_en=[lab.brand,lab.model].filter(Boolean).join(" ");if(h.category)pre.category=h.category;
+        note=`זוהה מהמדבקה: ${[lab.brand,lab.model].filter(Boolean).join(" ")}. השם בעברית נוצר אוטומטית – אפשר לתקן.`;
+      }else if(fromSnap&&!code){note="לא הצלחתי לקרוא את המדבקה. נסה לצלם קרוב יותר ובאור טוב, או מלא ידנית."}
+      if(lab.brand&&!pre.brand)pre.brand=lab.brand;
+      if(lab.serial)pre.serials=lab.serial;
+    }catch(e){}
+  }
+  // 2) public barcode database (if the sticker gave no model)
+  if(code&&!pre.model){
+    try{const {data:r}=await sb.functions.invoke("items",{body:{action:"barcode",code}});
+      if(r&&r.found){pre.name_en=(r.item.name||"").slice(0,80);pre.brand=pre.brand||r.item.brand||"";pre.model=r.item.model||"";pre.name=hebrewName(pre.brand,pre.model).name;note="נמצא במאגר המוצרים הבינלאומי. אפשר לתקן את השם בעברית לפני השמירה."}}catch(e){}
+  }
   openSheet("stock",null,pre,note);
 }
 
 /* ---------- projects: engineer plan with markers ---------- */
 let ptType="cam",selPt=null;const planUrl={};let saveT=null;
 function curP(){return data.projects.find(x=>x.id===curProject)}
-function countsHtml(p){const pts=p.points||[];return Object.keys(PT).filter(k=>k!=="other"||pts.some(x=>x.type===k)).map(k=>`<div class="tile"><span>${PT[k].l}</span><b>${pts.filter(x=>x.type===k).length}</b></div>`).join("")}
+function cntTotal(p){return Object.keys(PT).reduce((a,k)=>a+cnt(p,k),0)}
+function cnt(p,k){return (p.points||[]).filter(x=>x.type===k).length+num((p.manual||{})[k])}
+function countsHtml(p){return Object.keys(PT).filter(k=>k!=="other"||cnt(p,k)).map(k=>`<div class="tile"><span>${PT[k].l}</span><b>${cnt(p,k)}</b></div>`).join("")}
+function textSheet(p){
+  const man=p.manual||{};const el=$("#sheet");
+  el.innerHTML=`<form id="tx" novalidate><h3>תיאור הפרויקט בכתב</h3>
+   <div class="f"><label for="txd">מה צריך לעשות</label><textarea id="txd" style="min-height:140px" placeholder="לדוגמה: 8 מצלמות חוץ סביב הבניין, 2 בלובי, NVR בארון תקשורת בחדר שירות, נקודת WiFi בכל קומה, 4 רמקולים בלובי">${esc(p.notes||"")}</textarea></div>
+   <div class="note">כמויות (בנוסף לסימונים על התוכנית, אם יש):</div>
+   <div class="counts">${["cam","net","wifi","audio"].map(k=>`<div class="f"><label for="m_${k}">${PT[k].l}</label><input id="m_${k}" type="number" inputmode="numeric" min="0" value="${esc(man[k]||"")}"></div>`).join("")}</div>
+   <div class="actions"><button class="btn" type="submit">שמירה</button><button class="btn ghost" type="button" data-close>סגירה</button></div></form>`;
+  el.hidden=false;el.onclick=e=>{if(e.target===el||e.target.closest("[data-close]"))el.hidden=true};
+  $("#tx").onsubmit=async e=>{e.preventDefault();
+    const manual={};["cam","net","wifi","audio"].forEach(k=>{const v=num($("#m_"+k).value);if(v)manual[k]=v});
+    const {error}=await sb.from("projects").update({notes:$("#txd").value.trim(),manual,updated_at:new Date().toISOString()}).eq("id",p.id);
+    if(error){toast("השמירה נכשלה");return}el.hidden=true;toast("נשמר");await loadAll()};
+}
 async function projectView(m){
   const p=curP();if(!p){curProject=null;render();return}
   p.points=p.points||[];
@@ -569,8 +660,14 @@ async function projectView(m){
    <div id="selBox"><div class="note" id="planHint">לחץ על התוכנית כדי להוסיף ${PT[ptType].l}. לחיצה על סימון בוחרת אותו לעריכה או מחיקה.</div></div>
    <div class="counts" id="counts">${countsHtml(p)}</div>
    <div class="bar"><button class="btn" type="button" id="sharePlan" style="flex:1">שיתוף התוכנית עם הסימונים</button><label class="btn ghost" style="text-align:center">החלפת תמונה<input type="file" accept="image/*" id="planFile" hidden></label></div>`
-   :`<label class="tile" style="text-align:center;padding:32px 16px;justify-items:center"><b style="font-size:34px">📐</b><span style="font-size:15px;color:var(--fg);font-weight:700">צלם או בחר את תוכנית המהנדס</span><span>אחר כך מסמנים עליה מצלמות, נקודות רשת, WiFi ואודיו</span><input type="file" accept="image/*" id="planFile" hidden></label>`}
-   ${p.notes?`<div class="note">${esc(p.notes)}</div>`:""}`;
+   :`<h2>איך להוסיף את הפרויקט?</h2>
+   <div class="tiles" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+    <label class="tile" style="text-align:center;padding:26px 10px;justify-items:center"><b style="font-size:34px">📐</b><span style="font-size:15px;color:var(--fg);font-weight:700">העלאת תמונה</span><span>תוכנית מהנדס – מצלמים או בוחרים מהגלריה, ומסמנים עליה</span><input type="file" accept="image/*" id="planFile" hidden></label>
+    <button class="tile" type="button" id="textProj" style="text-align:center;padding:26px 10px;justify-items:center"><b style="font-size:34px">✍️</b><span style="font-size:15px;color:var(--fg);font-weight:700">הוספה בכתב</span><span>כותבים מה צריך וכמה מכל דבר</span></button>
+   </div>
+   ${cntTotal(p)?`<div class="counts" id="counts">${countsHtml(p)}</div>`:""}`}
+   ${p.notes?`<div class="note" style="white-space:pre-wrap">${esc(p.notes)}</div>`:""}
+   <button class="btn ghost" type="button" id="textProj2">${p.notes||Object.keys(p.manual||{}).length?"עריכת התיאור והכמויות":"הוספת תיאור בכתב"}</button>`;
   const f=$("#planFile");if(f)f.onchange=()=>f.files[0]&&uploadPlan(p,f.files[0]);
   if(!p.plan_path)return;
   const img=$("#planImg");
@@ -626,7 +723,7 @@ async function sharePlan(p){
       g.fillStyle="#fff";g.font=`700 ${Math.round(R*.75)}px Heebo, Arial`;g.fillText(pt.label||PT[pt.type].s,x,y+1)}
     g.fillStyle="#0c1d47";g.fillRect(0,H,W,legendH);g.fillStyle="#fff";g.textAlign="right";
     const fs=Math.round(legendH*.32);g.font=`700 ${fs}px Heebo, Arial`;g.direction="rtl";
-    const parts=Object.keys(PT).map(k=>[k,p.points.filter(x=>x.type===k).length]).filter(x=>x[1]).map(([k,n])=>`${PT[k].l}: ${n}`);
+    const parts=Object.keys(PT).map(k=>[k,cnt(p,k)]).filter(x=>x[1]).map(([k,n])=>`${PT[k].l}: ${n}`);
     g.fillText(`אהרן מערכות · ${p.name}`,W-fs,H+legendH*.33);g.font=`500 ${Math.round(fs*.85)}px Heebo, Arial`;g.fillText(parts.join("   ·   ")||"אין סימונים",W-fs,H+legendH*.72);
     const blob=await new Promise(ok=>c.toBlob(ok,"image/jpeg",.9));
     const file=new File([blob],`${p.name||"plan"}.jpg`,{type:"image/jpeg"});
@@ -645,6 +742,7 @@ document.addEventListener("click",async e=>{
   if(e.target.closest("#ptDel")){const p=curP();p.points=p.points.filter(x=>x.id!==selPt);selPt=null;afterPoints(p);return}
   if(e.target.closest("#ptCancel")){const p=curP();selPt=null;drawMarkers(p);selBox(p);return}
   if(e.target.closest("#sharePlan")){sharePlan(curP());return}
+  if(e.target.closest("#textProj")||e.target.closest("#textProj2")){textSheet(curP());return}
   const g=e.target.closest("[data-go]");if(g){e.preventDefault();if(g.dataset.f)filt[g.dataset.go]=g.dataset.f;go(g.dataset.go);return}
   const n=e.target.closest("[data-new]");if(n){openSheet(n.dataset.new);return}
   const op=e.target.closest("[data-open-project]");if(op){curProject=op.dataset.openProject;render();window.scrollTo(0,0);return}
