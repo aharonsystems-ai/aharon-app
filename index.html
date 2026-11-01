@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>אהרן מערכות · ניהול</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0c1d47">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ניהול">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700&family=Rubik:wght@600;700&display=swap">
+<style>
+/* Phone-first control panel: summary tiles, one list per area, bottom tab bar, edit sheet slides up. */
+:root{
+  --bg:#f3f5f9; --card:#ffffff; --fg:#14213d; --muted:#5d6b85; --line:#dde3ee;
+  --navy:#0c1d47; --accent:#1747b8; --accent-ink:#ffffff;
+  --good:#11845b; --warn:#b26a00; --bad:#c0392b; --chip:#e8eefb;
+  --display:"Rubik","Heebo",Arial,sans-serif; --body:"Heebo",Arial,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0b1222; --card:#131d33; --fg:#e7ecf6; --muted:#9aa8c3; --line:#26324d;
+  --navy:#0a1630; --accent:#6f9bff; --accent-ink:#0b1222;
+  --good:#3ccf91; --warn:#f0a73a; --bad:#ff7b6b; --chip:#1d2a47; color-scheme:dark}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--body);-webkit-tap-highlight-color:transparent;min-height:100vh}
+.top{position:sticky;top:0;z-index:5;background:var(--navy);color:#fff;
+  padding:calc(10px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));
+  display:flex;align-items:center;justify-content:space-between;gap:10px}
+.top .brand{display:flex;align-items:center;gap:10px;min-width:0}
+.top img{width:32px;height:32px;border-radius:8px}
+.top h1{font:700 18px/1.2 var(--display);margin:0}
+.top small{opacity:.75;font-size:12px;display:block}
+.iconbtn{background:rgba(255,255,255,.12);border:0;color:#fff;border-radius:10px;padding:8px 10px;font:600 13px var(--body);cursor:pointer;white-space:nowrap}
+main{padding:16px max(16px,env(safe-area-inset-right,0px)) calc(96px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));max-width:860px;margin:0 auto;display:grid;gap:16px}
+h2{font:700 18px var(--display);margin:0}
+.tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media(min-width:640px){.tiles{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:grid;gap:2px;text-align:right;cursor:pointer;font:inherit;color:inherit}
+.tile b{font:700 22px var(--display);font-variant-numeric:tabular-nums}
+.tile span{color:var(--muted);font-size:13px}
+.tile.bad b{color:var(--bad)} .tile.good b{color:var(--good)} .tile.warn b{color:var(--warn)}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+input[type=search]{flex:1;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit}
+.btn{border:0;border-radius:10px;padding:10px 14px;font:600 15px var(--body);cursor:pointer;background:var(--accent);color:var(--accent-ink)}
+.btn.ghost{background:var(--chip);color:var(--fg)}
+.btn.danger{background:transparent;color:var(--bad);border:1.5px solid var(--bad)}
+.btn:disabled{opacity:.6}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--warn);outline-offset:2px}
+.filters{display:flex;gap:6px;flex-wrap:wrap}
+.chipbtn{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:999px;padding:5px 12px;font:500 13px var(--body);cursor:pointer}
+.chipbtn[aria-pressed=true]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.list{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:12px 14px;border:0;border-top:1px solid var(--line);cursor:pointer;background:none;width:100%;text-align:right;font:inherit;color:inherit;text-decoration:none}
+.row:first-child{border-top:0}
+.row .t{font-weight:700;min-width:0;overflow-wrap:anywhere}
+.row .s{color:var(--muted);font-size:13px;min-width:0;overflow-wrap:anywhere;grid-column:1}
+.row .n{font:700 16px var(--display);font-variant-numeric:tabular-nums;white-space:nowrap;align-self:start}
+.row .p{grid-column:2;justify-self:end;align-self:end}
+.pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:600;background:var(--chip);color:var(--fg)}
+.pill.bad{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
+.pill.good{background:color-mix(in srgb,var(--good) 16%,transparent);color:var(--good)}
+.pill.warn{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.empty{padding:22px 16px;color:var(--muted);text-align:center}
+.note{background:var(--chip);border-radius:12px;padding:12px 14px;font-size:14px}
+.note a{color:var(--accent);font-weight:600}
+.sum{display:flex;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--chip);font-weight:700;font-variant-numeric:tabular-nums}
+.sum.plain{background:none;border-top:1px solid var(--line)}
+nav{position:fixed;inset:auto 0 0 0;z-index:6;background:var(--card);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(6,1fr);
+  padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+nav button{background:none;border:0;color:var(--muted);font:600 11.5px var(--body);padding:8px 2px 9px;display:grid;justify-items:center;gap:3px;cursor:pointer}
+nav button svg{width:22px;height:22px}
+nav button[aria-current=page]{color:var(--accent)}
+.sheet{position:fixed;inset:0;z-index:20;background:rgba(5,10,25,.5);display:flex;align-items:flex-end;justify-content:center}
+.sheet form{background:var(--card);width:min(560px,100%);max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;
+  padding:18px max(16px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:grid;gap:12px}
+.sheet h3{font:700 18px var(--display);margin:0}
+.f{display:grid;gap:4px}
+.f label{font-size:13px;color:var(--muted);font-weight:600}
+.f input,.f select,.f textarea{padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:16px var(--body);width:100%}
+.f textarea{min-height:70px;resize:vertical}
+.actions{display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;padding-top:4px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:999px;font-weight:600;z-index:30;max-width:90vw;text-align:center}
+.login{min-height:100vh;display:grid;place-items:center;padding:24px max(16px,env(safe-area-inset-right,0px)) 24px max(16px,env(safe-area-inset-left,0px))}
+.login form{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px;width:min(380px,100%);display:grid;gap:14px;text-align:center}
+.login img{width:72px;height:72px;border-radius:16px;justify-self:center}
+.login h1{font:700 22px var(--display);margin:0}
+.login p{margin:0;color:var(--muted)}
+.code{letter-spacing:.4em;text-align:center;font-size:22px!important;direction:ltr}
+@media (prefers-reduced-motion:no-preference){.sheet form{animation:up .18s ease-out}@keyframes up{from{transform:translateY(30px);opacity:.6}}}
+</style>
+</head>
+<body>
+
+<section id="login" class="login" hidden>
+  <form id="loginForm" novalidate>
+    <img src="icon-192.png" alt="">
+    <h1>אהרן מערכות · ניהול</h1>
+    <div class="f">
+      <label for="email">מייל</label>
+      <input id="email" type="email" inputmode="email" autocomplete="username" value="aharonsystems@gmail.com" dir="ltr">
+      <label for="pass">סיסמה</label>
+      <input id="pass" type="password" autocomplete="current-password" dir="ltr">
+      <button class="btn" type="submit" id="loginBtn">כניסה</button>
+      <button class="btn ghost" type="button" id="signupBtn">פעם ראשונה? יצירת סיסמה</button>
+      <button class="btn ghost" type="button" id="resetBtn">שכחתי סיסמה</button>
+    </div>
+    <p id="loginMsg" role="status"></p>
+  </form>
+</section>
+
+<div id="app" hidden>
+<header class="top">
+  <div class="brand"><img src="icon-192.png" alt=""><div><h1>אהרן מערכות</h1><small id="status">טוען…</small></div></div>
+  <button class="iconbtn" type="button" id="syncBtn">סנכרון Morning</button>
+</header>
+<main id="main"></main>
+<nav id="nav" aria-label="אזורים"></nav>
+</div>
+<div id="sheet" class="sheet" hidden></div>
+<div id="toast" class="toast" hidden role="status"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+(function(){
+const SUPABASE_URL="https://pipynokkdtvkkzcgatlq.supabase.co";
+const SUPABASE_KEY="sb_publishable_7guQcMWDXlXrtHkfGZM1_w_4FDmwBRh"; // publishable key: safe in the browser, data is protected by row-level security
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,storageKey:"aharon-app-auth"}});
+
+const ICON={
+ home:'<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+ jobs:'<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5h8v2"/>',
+ stock:'<path d="M3 7l9-4 9 4-9 4zM3 7v10l9 4 9-4V7M12 11v10"/>',
+ tasks:'<path d="M9 11l3 3 8-8"/><path d="M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11"/>',
+ debts:'<path d="M12 3v18M17 7H9.5a3 3 0 0 0 0 6h5a3 3 0 0 1 0 6H6"/>',
+ expenses:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/>'
+};
+const TABS=[["home","בית"],["jobs","עבודות"],["stock","מלאי"],["tasks","משימות"],["debts","חובות"],["expenses","הוצאות"]];
+const TAX=["ביטוח לאומי","מס הכנסה",'מע"מ'];
+const DEBT_CATS=["ספק","ביטוח לאומי","מס הכנסה",'מע"מ',"אשראי/הלוואה","אחר"];
+const EXP_CATS=["ציוד","כלי עבודה","דלק ורכב","ביטוח לאומי","מס הכנסה",'מע"מ',"תקשורת","רואת חשבון","עובדים","אחר"];
+const SCHEMA={
+ jobs:{title:"עבודה",fields:[
+  ["client","שם לקוח","text",1],["phone","טלפון","tel"],["place","עסק / מיקום","text"],["address","כתובת","text"],
+  ["work","פרטי עבודה","textarea"],["date","תאריך עבודה","date"],["price","מחיר גבייה ₪","num"],["cost","עלויות ₪","num"],
+  ["profit","רווח בפועל ₪","num"],["paid","שולם?","select",0,["לא ידוע","כן","לא","חלקי"]],["paid_amount","כמה שולם ₪ (אם חלקי)","num"],
+  ["receipt","הוצאה קבלה?","select",0,["","כן","לא"]],["notes","הערות","textarea"]]},
+ stock:{title:"פריט מלאי",fields:[["name","שם הפריט","text",1],["qty","כמות במלאי","num"],["min_qty","התראה מתחת ל־","num"],
+  ["unit_cost","מחיר קנייה ליחידה ₪","num"],["supplier","ספק","text"],["notes","הערות","textarea"]]},
+ tasks:{title:"משימה",fields:[["title","מה צריך לעשות","text",1],["client","לקוח","text"],["date","תאריך","date"],
+  ["done","סטטוס","select",0,["פתוח","בוצע"]],["notes","הערות","textarea"]]},
+ debts:{title:"חוב",fields:[["name","למי","text",1],["cat","סוג","select",0,DEBT_CATS],["amount","סכום ₪","num"],["due","תאריך תשלום","date"],
+  ["monthly","החזר חודשי ₪","num"],["paid","סטטוס","select",0,["פתוח","שולם"]],["notes","הערות","textarea"]]},
+ expenses:{title:"הוצאה",fields:[["date","תאריך","date"],["vendor","ספק / חנות","text",1],["cat","קטגוריה","select",0,EXP_CATS],["amount","סכום כולל ₪","num"],
+  ["vat",'מע"מ ששולם ₪',"num"],["for_job","עבור לקוח","text"],["receipt","יש קבלה?","select",0,["","כן","לא","מזומן"]],["notes","הערות","textarea"]]}
+};
+const data={jobs:[],stock:[],tasks:[],debts:[],expenses:[],morning_docs:[]};
+let tab="home",q="",filt={},loaded=false,lastSync=null;
+
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const num=v=>{const n=Number(v);return isFinite(n)?n:0};
+const ils=n=>"₪"+Math.round(num(n)).toLocaleString("he-IL");
+const today=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
+const heDate=d=>{if(!d)return"";const [y,m,dd]=String(d).slice(0,10).split("-");return `${+dd}/${+m}/${y.slice(2)}`};
+function toast(t){const el=$("#toast");el.textContent=t;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,2600)}
+function owedOf(j){if(j.paid==="לא")return Math.max(0,num(j.price)-num(j.paid_amount));if(j.paid==="חלקי")return Math.max(0,num(j.price)-num(j.paid_amount));return 0}
+function profitOf(j){if(j.profit!==null&&j.profit!==undefined)return num(j.profit);if(j.cost!==null&&j.cost!==undefined)return num(j.price)-num(j.cost);return 0}
+const openInvoices=()=>data.morning_docs.filter(d=>(d.type===300||d.type===305)&&d.status===0);
+const openQuotes=()=>data.morning_docs.filter(d=>d.type===10&&d.status===0);
+
+/* ---------- auth ---------- */
+async function boot(){
+  const {data:{session}}=await sb.auth.getSession();
+  if(session){showApp()}else{showLogin()}
+  sb.auth.onAuthStateChange((ev,s)=>{
+    if(ev==="SIGNED_OUT")showLogin();
+    if(ev==="SIGNED_IN"&&$("#app").hidden)showApp();
+    if(ev==="PASSWORD_RECOVERY")setTimeout(newPassword,300);
+  });
+}
+function newPassword(){
+  const el=$("#sheet");
+  el.innerHTML=`<form id="np" novalidate><h3>בחירת סיסמה חדשה</h3><div class="f"><label for="np1">סיסמה חדשה (8 תווים לפחות)</label><input id="np1" type="password" autocomplete="new-password" dir="ltr"></div>
+   <div class="actions"><button class="btn" type="submit">שמירה</button></div></form>`;
+  el.hidden=false;el.onclick=null;
+  $("#np").onsubmit=async e=>{e.preventDefault();const p=$("#np1").value;if(p.length<8){toast("8 תווים לפחות");return}
+    const {error}=await sb.auth.updateUser({password:p});if(error){toast("לא נשמר: "+error.message);return}
+    el.hidden=true;toast("הסיסמה עודכנה");history.replaceState(null,"",location.pathname)};
+}
+function showLogin(){$("#app").hidden=true;$("#login").hidden=false}
+function showApp(){$("#login").hidden=true;$("#app").hidden=false;render();loadAll()}
+const msg=t=>$("#loginMsg").textContent=t;
+const creds=()=>({email:$("#email").value.trim(),password:$("#pass").value});
+$("#loginForm").addEventListener("submit",async e=>{
+  e.preventDefault();const c=creds();if(!c.password){msg("הכנס סיסמה");return}
+  $("#loginBtn").disabled=true;msg("נכנס…");
+  const {error}=await sb.auth.signInWithPassword(c);
+  $("#loginBtn").disabled=false;
+  if(error){msg(/confirm/i.test(error.message)?"צריך קודם לאשר את המייל: פתח את המייל מ-Supabase ולחץ על הקישור.":"מייל או סיסמה לא נכונים.");return}
+  msg("");showApp();
+});
+$("#signupBtn").addEventListener("click",async()=>{
+  const c=creds();if(c.password.length<8){msg("בחר סיסמה של 8 תווים לפחות, ואז לחץ שוב.");$("#pass").focus();return}
+  $("#signupBtn").disabled=true;msg("יוצר…");
+  const {data:d,error}=await sb.auth.signUp({...c,options:{emailRedirectTo:location.href.split("#")[0]}});
+  $("#signupBtn").disabled=false;
+  if(error){msg("לא הצלחתי ליצור: "+error.message);return}
+  if(d.session){msg("");showApp();return}
+  msg("נשלח אליך מייל לאישור. לחץ על הקישור במייל, ואז חזור לכאן והיכנס עם הסיסמה.");
+});
+$("#resetBtn").addEventListener("click",async()=>{
+  const {email}=creds();msg("שולח…");
+  const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.href.split("#")[0]+"#reset"});
+  msg(error?"לא הצלחתי לשלוח: "+error.message:"נשלח מייל לאיפוס סיסמה.");
+});
+
+/* ---------- data ---------- */
+async function loadAll(){
+  $("#status").textContent="טוען…";
+  try{
+    const tables=["jobs","stock","tasks","debts","expenses","morning_docs"];
+    const res=await Promise.all(tables.map(t=>sb.from(t).select("*").limit(5000)));
+    res.forEach((r,i)=>{if(r.error)throw r.error;data[tables[i]]=r.data||[]});
+    const lg=await sb.from("sync_log").select("at,ok,message").order("at",{ascending:false}).limit(1);
+    lastSync=lg.data&&lg.data[0]||null;
+    loaded=true;
+    $("#status").textContent=lastSync?`Morning: ${new Date(lastSync.at).toLocaleString("he-IL",{day:"numeric",month:"numeric",hour:"2-digit",minute:"2-digit"})}${lastSync.ok?"":" (שגיאה)"}`:"Morning: עוד לא סונכרן";
+    if($("#sheet").hidden)render();
+  }catch(err){$("#status").textContent="אין חיבור לנתונים";toast("הנתונים לא נטענו. בדוק אינטרנט ונסה שוב.")}
+}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&!$("#app").hidden)loadAll()});
+$("#syncBtn").addEventListener("click",async()=>{
+  const b=$("#syncBtn");b.disabled=true;b.textContent="מסנכרן…";
+  try{const {data:r,error}=await sb.functions.invoke("morning-sync",{body:{}});if(error)throw error;toast(r&&r.message?r.message:"סונכרן");await loadAll()}
+  catch(e){toast("הסנכרון נכשל")}
+  b.disabled=false;b.textContent="סנכרון Morning";
+});
+
+/* ---------- nav ---------- */
+$("#nav").innerHTML=TABS.map(([k,l])=>`<button type="button" data-tab="${k}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>${l}</button>`).join("");
+$("#nav").addEventListener("click",e=>{const b=e.target.closest("button");if(b)go(b.dataset.tab)});
+function go(t){tab=t;q="";render();window.scrollTo(0,0)}
+
+/* ---------- views ---------- */
+function render(){
+  document.querySelectorAll("#nav button").forEach(b=>{if(b.dataset.tab===tab)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current")});
+  const m=$("#main");
+  if(!loaded){m.innerHTML=`<div class="list"><div class="empty">טוען נתונים…</div></div>`;return}
+  if(tab==="home"){m.innerHTML=home();return}
+  if(tab==="quotes"){m.innerHTML=quotesView();return}
+  m.innerHTML=listView(tab);
+  const s=$("#q");if(s){s.value=q;s.oninput=()=>{q=s.value.trim();m.querySelector(".list").outerHTML=listBody(tab)}}
+}
+function docRow(d){
+  return `<a class="row" href="${esc(d.url||"#")}" target="_blank" rel="noopener"><span class="t">${esc(d.client||"")}</span><span class="n">${ils(d.amount)}</span><span class="s">${esc(d.type_name)} ${esc(d.number)} · ${heDate(d.doc_date)}${d.description?" · "+esc(d.description):""}</span><span class="p"><span class="pill ${d.type===10?"":"bad"}">${d.type===10?"הצעה":"פתוחה"}</span></span></a>`;
+}
+function home(){
+  const owed=data.jobs.filter(j=>owedOf(j)>0), inv=openInvoices();
+  const owedSum=owed.reduce((a,j)=>a+owedOf(j),0)+inv.reduce((a,d)=>a+num(d.amount),0);
+  const unknown=data.jobs.filter(j=>!j.paid||j.paid==="לא ידוע");
+  const open=data.debts.filter(d=>d.paid!=="שולם"), debtSum=open.reduce((a,d)=>a+num(d.amount),0);
+  const tax=open.filter(d=>TAX.includes(d.cat));
+  const low=data.stock.filter(s=>num(s.qty)<=num(s.min_qty));
+  const tasks=data.tasks.filter(t=>t.done!=="בוצע").sort((a,b)=>(a.date||"9").localeCompare(b.date||"9"));
+  const y=String(new Date().getFullYear());
+  const yearJobs=data.jobs.filter(j=>(j.date||"").startsWith(y));
+  const income=yearJobs.reduce((a,j)=>a+num(j.price),0), profit=yearJobs.reduce((a,j)=>a+profitOf(j),0);
+  const expY=data.expenses.filter(x=>(x.date||"").startsWith(y)).reduce((a,x)=>a+num(x.amount),0);
+  const quotes=openQuotes();
+  return `
+  <div class="tiles">
+   <button class="tile ${owedSum?'bad':''}" data-go="jobs" data-f="owed"><span>חייבים לי</span><b>${ils(owedSum)}</b><span>${inv.length} חשבוניות + ${owed.length} עבודות</span></button>
+   <button class="tile ${debtSum?'warn':''}" data-go="debts"><span>אני חייב</span><b>${ils(debtSum)}</b><span>${open.length} חובות פתוחים</span></button>
+   <button class="tile ${low.length?'bad':'good'}" data-go="stock" data-f="low"><span>חסר במלאי</span><b>${low.length}</b><span>${data.stock.length} פריטים</span></button>
+   <button class="tile" data-go="tasks"><span>משימות פתוחות</span><b>${tasks.length}</b><span>${tasks.filter(t=>t.date&&t.date<=today()).length} להיום או באיחור</span></button>
+  </div>
+  ${inv.length?`<h2>חשבוניות פתוחות ב־Morning</h2><div class="list">${inv.sort((a,b)=>String(b.doc_date).localeCompare(String(a.doc_date))).map(docRow).join("")}<div class="sum"><span>סה״כ</span><span>${ils(inv.reduce((a,d)=>a+num(d.amount),0))}</span></div></div>`:""}
+  ${quotes.length?`<button class="tile" data-go="quotes"><span>הצעות מחיר פתוחות ב־Morning</span><b>${quotes.length}</b><span>${ils(quotes.reduce((a,d)=>a+num(d.amount),0))} · לחץ לרשימה</span></button>`:""}
+  <section class="list" aria-label="סיכום שנה">
+   <div class="sum"><span>הכנסות ${y} (לפי עבודות)</span><span>${ils(income)}</span></div>
+   <div class="sum plain"><span>רווח בפועל ${y}</span><span>${ils(profit)}</span></div>
+   <div class="sum plain"><span>הוצאות ${y}</span><span>${ils(expY)}</span></div>
+  </section>
+  ${tax.length?`<h2>מיסים וביטוח לאומי</h2><div class="list">${tax.map(d=>row("debts",d)).join("")}</div>`:""}
+  ${tasks.length?`<h2>משימות קרובות</h2><div class="list">${tasks.slice(0,5).map(t=>row("tasks",t)).join("")}</div>`:""}
+  ${owed.length?`<h2>עבודות שלא שולמו</h2><div class="list">${owed.sort((a,b)=>owedOf(b)-owedOf(a)).slice(0,6).map(j=>row("jobs",j)).join("")}</div>`:""}
+  ${unknown.length?`<div class="note">${unknown.length} עבודות בלי סטטוס תשלום. <a href="#" data-go="jobs" data-f="unknown">לעבור עליהן</a> ולסמן מה שולם.</div>`:""}
+  <div class="bar"><button class="btn ghost" type="button" id="logout">יציאה מהחשבון</button></div>`;
+}
+function quotesView(){
+  const qs=openQuotes().sort((a,b)=>String(b.doc_date).localeCompare(String(a.doc_date)));
+  return `<div class="bar"><h2 style="flex:1">הצעות מחיר פתוחות</h2><button class="btn ghost" type="button" data-go="home">חזרה</button></div>
+  <div class="note">הצעות שעוד לא נסגרו ב־Morning. לחיצה פותחת את המסמך.</div>
+  <div class="list">${qs.length?qs.map(docRow).join(""):`<div class="empty">אין הצעות פתוחות.</div>`}<div class="sum"><span>${qs.length} הצעות</span><span>${ils(qs.reduce((a,d)=>a+num(d.amount),0))}</span></div></div>`;
+}
+const FILTERS={
+ jobs:[["all","הכל"],["owed","חייבים"],["unknown","לא ידוע"],["paid","שולם"]],
+ stock:[["all","הכל"],["low","חסר"]],
+ tasks:[["open","פתוח"],["done","בוצע"],["all","הכל"]],
+ debts:[["open","פתוח"],["tax","מיסים"],["paid","שולם"],["all","הכל"]],
+ expenses:[["all","הכל"],["year","השנה"],["month","החודש"]]
+};
+function pass(k,x){
+  const f=filt[k]||FILTERS[k][0][0];
+  if(q){const s=Object.values(x).join(" ");if(!s.includes(q))return false}
+  switch(k+":"+f){
+   case "jobs:owed":return owedOf(x)>0; case "jobs:unknown":return !x.paid||x.paid==="לא ידוע"; case "jobs:paid":return x.paid==="כן";
+   case "stock:low":return num(x.qty)<=num(x.min_qty);
+   case "tasks:open":return x.done!=="בוצע"; case "tasks:done":return x.done==="בוצע";
+   case "debts:open":return x.paid!=="שולם"; case "debts:paid":return x.paid==="שולם"; case "debts:tax":return TAX.includes(x.cat);
+   case "expenses:year":return (x.date||"").startsWith(String(new Date().getFullYear())); case "expenses:month":return (x.date||"").startsWith(today().slice(0,7));
+  }
+  return true;
+}
+function sorted(k){
+  const a=data[k].slice();
+  if(k==="jobs"||k==="expenses")a.sort((x,y)=>(y.date||"").localeCompare(x.date||""));
+  else if(k==="tasks")a.sort((x,y)=>(x.date||"9").localeCompare(y.date||"9"));
+  else if(k==="debts")a.sort((x,y)=>num(y.amount)-num(x.amount));
+  else a.sort((x,y)=>String(x.name||"").localeCompare(String(y.name||""),"he"));
+  return a;
+}
+function listView(k){
+  const cur=filt[k]||FILTERS[k][0][0];
+  return `<div class="bar"><h2 style="flex:1">${TABS.find(t=>t[0]===k)[1]}</h2><button class="btn" type="button" data-new="${k}">+ ${SCHEMA[k].title}</button></div>
+  <div class="bar"><input id="q" type="search" placeholder="חיפוש" aria-label="חיפוש"></div>
+  <div class="filters" role="group" aria-label="סינון">${FILTERS[k].map(([v,l])=>`<button type="button" class="chipbtn" data-filt="${v}" aria-pressed="${v===cur}">${l}</button>`).join("")}</div>
+  ${listBody(k)}`;
+}
+const EMPTY={
+ jobs:"עוד אין עבודות. לחץ \"+ עבודה\" כדי להוסיף.",
+ stock:"המלאי ריק. הוסף את מה שיש במחסן וברכב: מצלמות, NVR, כבלים, קופסאות, סוויצ׳ים. לכל פריט אפשר להגדיר כמות מינימום ולקבל התראה.",
+ tasks:"אין משימות. הוסף התקנה, ביקור או תיקון עם תאריך.",
+ debts:"אין חובות רשומים.",
+ expenses:"אין הוצאות. הוסף קנייה מספק עם הסכום והמע״מ."
+};
+function listBody(k){
+  const items=sorted(k).filter(x=>pass(k,x));
+  if(!items.length)return `<div class="list"><div class="empty">${data[k].length?"אין תוצאות לסינון הזה.":EMPTY[k]}</div></div>`;
+  let total="";
+  if(k==="jobs"){const inv=(filt.jobs==="owed")?openInvoices():[];total=`<div class="sum"><span>${items.length} עבודות · חייבים</span><span>${ils(items.reduce((a,j)=>a+owedOf(j),0))}</span></div>`;
+    if(inv.length)total=`<div class="sum"><span>חשבוניות פתוחות ב־Morning</span><span>${ils(inv.reduce((a,d)=>a+num(d.amount),0))}</span></div>${inv.map(docRow).join("")}`+total}
+  if(k==="debts")total=`<div class="sum"><span>סה״כ פתוח</span><span>${ils(items.filter(d=>d.paid!=="שולם").reduce((a,d)=>a+num(d.amount),0))}</span></div>`;
+  if(k==="expenses")total=`<div class="sum"><span>${items.length} הוצאות</span><span>${ils(items.reduce((a,x)=>a+num(x.amount),0))}</span></div>`;
+  if(k==="stock")total=`<div class="sum"><span>שווי מלאי</span><span>${ils(items.reduce((a,s)=>a+num(s.qty)*num(s.unit_cost),0))}</span></div>`;
+  return `<div class="list">${total}${items.map(x=>row(k,x)).join("")}</div>`;
+}
+function row(k,x){
+  let t="",s="",n="",p="";
+  if(k==="jobs"){const o=owedOf(x);t=x.client||"ללא שם";s=[x.place,x.work].filter(Boolean).join(" · ")+(x.date?` · ${heDate(x.date)}`:"");n=x.price?ils(x.price):"";
+    p=o>0?`<span class="pill bad">חייב ${ils(o)}</span>`:x.paid==="כן"?`<span class="pill good">שולם</span>`:`<span class="pill warn">לא ידוע</span>`}
+  if(k==="stock"){const lowv=num(x.qty)<=num(x.min_qty);t=x.name;s=[x.supplier,x.unit_cost?ils(x.unit_cost)+" ליח׳":""].filter(Boolean).join(" · ");n=`${num(x.qty)} יח׳`;p=lowv?`<span class="pill bad">להזמין</span>`:""}
+  if(k==="tasks"){const late=x.done!=="בוצע"&&x.date&&x.date<today();t=x.title;s=[x.client,x.date?heDate(x.date):""].filter(Boolean).join(" · ");p=x.done==="בוצע"?`<span class="pill good">בוצע</span>`:late?`<span class="pill bad">באיחור</span>`:`<span class="pill">פתוח</span>`}
+  if(k==="debts"){t=x.name;s=[x.cat,x.due?"לתשלום "+heDate(x.due):"",x.monthly?ils(x.monthly)+" לחודש":""].filter(Boolean).join(" · ");n=x.amount?ils(x.amount):"—";p=x.paid==="שולם"?`<span class="pill good">שולם</span>`:(x.amount?"":`<span class="pill warn">חסר סכום</span>`)}
+  if(k==="expenses"){t=x.vendor||x.cat;s=[x.cat,x.for_job,x.date?heDate(x.date):""].filter(Boolean).join(" · ");n=x.amount?ils(x.amount):"";p=x.vat?`<span class="pill">מע״מ ${ils(x.vat)}</span>`:""}
+  return `<button type="button" class="row" data-edit="${k}" data-id="${esc(x.id)}"><span class="t">${esc(t)}</span><span class="n">${n}</span><span class="s">${esc(s)}</span><span class="p">${p}</span></button>`;
+}
+
+/* ---------- edit sheet ---------- */
+function openSheet(k,id){
+  const x=id?data[k].find(d=>d.id===id):{}; if(!x)return;
+  const F=SCHEMA[k].fields;
+  const field=([key,label,type,req,opts])=>{
+    let v=x[key]??(key==="date"&&!id?today():"");
+    const idA=`f_${key}`;
+    if(type==="select")return `<div class="f"><label for="${idA}">${label}</label><select id="${idA}" name="${key}">${opts.map(o=>`<option ${o===v?"selected":""}>${esc(o)}</option>`).join("")}</select></div>`;
+    if(type==="textarea")return `<div class="f"><label for="${idA}">${label}</label><textarea id="${idA}" name="${key}">${esc(v)}</textarea></div>`;
+    const it=type==="num"?'type="number" inputmode="decimal" step="any"':type==="date"?'type="date"':type==="tel"?'type="tel" dir="ltr"':'type="text"';
+    return `<div class="f"><label for="${idA}">${label}</label><input id="${idA}" name="${key}" ${it} value="${esc(v)}" ${req?"required":""}></div>`;
+  };
+  const el=$("#sheet");
+  el.innerHTML=`<form id="edit" novalidate><h3>${id?"עריכת ":""}${SCHEMA[k].title}</h3>${F.map(field).join("")}
+   <div class="actions"><button class="btn" type="submit">שמירה</button><button class="btn ghost" type="button" data-close>סגירה</button>
+   ${id?`<button class="btn danger" type="button" data-del>מחיקה</button>`:""}</div></form>`;
+  el.hidden=false;
+  const form=$("#edit");
+  el.onclick=async e=>{
+    if(e.target===el||e.target.closest("[data-close]")){el.hidden=true;return}
+    const del=e.target.closest("[data-del]");
+    if(del){if(del.dataset.sure){const {error}=await sb.from(k).delete().eq("id",id);if(error){toast("המחיקה נכשלה");return}toast("נמחק");el.hidden=true;await loadAll()}
+      else{del.dataset.sure=1;del.textContent="ללחוץ שוב למחיקה"}}
+  };
+  form.onsubmit=async e=>{
+    e.preventDefault();
+    const body={};
+    for(const [key,label,type,req] of F){let v=form.elements[key].value.trim();if(req&&!v){form.elements[key].focus();toast("צריך למלא: "+label);return}
+      if(type==="num")v=v===""?null:Number(v);else if(type==="date")v=v||null;body[key]=v}
+    body.updated_at=new Date().toISOString();
+    const btn=form.querySelector("[type=submit]");btn.disabled=true;
+    const {error}=id?await sb.from(k).update(body).eq("id",id):await sb.from(k).insert(body);
+    btn.disabled=false;
+    if(error){toast("השמירה נכשלה. נסה שוב.");return}
+    toast("נשמר");el.hidden=true;await loadAll();
+  };
+}
+
+document.addEventListener("click",async e=>{
+  if(e.target.closest("#logout")){await sb.auth.signOut();return}
+  const g=e.target.closest("[data-go]");if(g){e.preventDefault();if(g.dataset.f)filt[g.dataset.go]=g.dataset.f;go(g.dataset.go);return}
+  const n=e.target.closest("[data-new]");if(n){openSheet(n.dataset.new);return}
+  const ed=e.target.closest("[data-edit]");if(ed){openSheet(ed.dataset.edit,ed.dataset.id);return}
+  const f=e.target.closest("[data-filt]");if(f){filt[tab]=f.dataset.filt;render()}
+});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#sheet").hidden)$("#sheet").hidden=true});
+
+if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(()=>{})}
+boot();
+})();
+</script>
+</body>
+</html>
