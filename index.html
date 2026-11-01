@@ -278,8 +278,9 @@ async function offerFaceId(){
 
 async function boot(){
   const {data:{session}}=await sb.auth.getSession();
-  if(session&&getFid()){$("#login").hidden=true;$("#lock").hidden=false;if(location.hash!=="#reset")unlock()}
-  else if(session){showApp()}else{showLogin()}
+  // stay logged in: open straight to the data (the phone's own Face ID lock protects it)
+  try{localStorage.removeItem(FID)}catch(x){}
+  if(session){showApp()}else{showLogin()}
   sb.auth.onAuthStateChange((ev,s)=>{
     if(ev==="SIGNED_OUT")showLogin();
     if(ev==="SIGNED_IN"&&$("#app").hidden&&$("#lock").hidden)showApp();
@@ -305,7 +306,7 @@ $("#loginForm").addEventListener("submit",async e=>{
   const {error}=await sb.auth.signInWithPassword(c);
   $("#loginBtn").disabled=false;
   if(error){msg(/confirm/i.test(error.message)?"צריך קודם לאשר את המייל: פתח את המייל מ-Supabase ולחץ על הקישור.":"מייל או סיסמה לא נכונים.");return}
-  msg("");showApp();setTimeout(offerFaceId,800);
+  msg("");showApp();
 });
 $("#resetBtn").addEventListener("click",async()=>{
   const {email}=creds();msg("שולח…");
@@ -385,7 +386,7 @@ function home(){
   ${tasks.length?`<h2>משימות קרובות</h2><div class="list">${tasks.slice(0,5).map(t=>row("tasks",t)).join("")}</div>`:""}
   ${owed.length?`<h2>עבודות שלא שולמו</h2><div class="list">${owed.sort((a,b)=>owedOf(b)-owedOf(a)).slice(0,6).map(j=>row("jobs",j)).join("")}</div>`:""}
   ${unknown.length?`<div class="note">${unknown.length} עבודות בלי סטטוס תשלום. <a href="#" data-go="jobs" data-f="unknown">לעבור עליהן</a> ולסמן מה שולם.</div>`:""}
-  <div class="bar"><button class="btn ghost" type="button" id="faceToggle">${getFid()?"כיבוי Face ID":"הפעלת Face ID"}</button><button class="btn ghost" type="button" id="logout">יציאה מהחשבון</button></div>`;
+  <div class="bar"><button class="btn ghost" type="button" id="logout">יציאה מהחשבון</button></div>`;
 }
 function quotesView(){
   const qs=openQuotes().sort((a,b)=>String(b.doc_date).localeCompare(String(a.doc_date)));
