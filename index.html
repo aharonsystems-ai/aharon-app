@@ -127,11 +127,21 @@ nav button[aria-current=page]{color:var(--accent)}
       <label for="pass">סיסמה</label>
       <input id="pass" type="password" autocomplete="current-password" dir="ltr">
       <button class="btn" type="submit" id="loginBtn">כניסה</button>
-      <button class="btn ghost" type="button" id="signupBtn">פעם ראשונה? יצירת סיסמה</button>
       <button class="btn ghost" type="button" id="resetBtn">שכחתי סיסמה</button>
     </div>
+    <p style="font-size:13px">כשהאייפון שואל אם לשמור את הסיסמה, אשר. מהפעם הבאה Face ID ימלא אותה לבד.</p>
     <p id="loginMsg" role="status"></p>
   </form>
+</section>
+
+<section id="lock" class="login" hidden>
+  <div class="f" style="background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px;width:min(380px,100%);text-align:center;gap:14px">
+    <img src="icon-192.png" alt="" style="width:72px;height:72px;border-radius:16px;justify-self:center">
+    <h1 style="font:700 22px var(--display);margin:0">אהרן מערכות · ניהול</h1>
+    <button class="btn" type="button" id="unlockBtn" style="padding:14px">כניסה עם Face ID</button>
+    <button class="btn ghost" type="button" id="lockPass">כניסה עם סיסמה</button>
+    <p id="lockMsg" role="status" style="margin:0;color:var(--muted)"></p>
+  </div>
 </section>
 
 <div id="app" hidden>
@@ -201,12 +211,48 @@ const openInvoices=()=>data.morning_docs.filter(d=>(d.type===300||d.type===305)&
 const openQuotes=()=>data.morning_docs.filter(d=>d.type===10&&d.status===0);
 
 /* ---------- auth ---------- */
+/* Face ID: a passkey on this phone unlocks the saved session */
+const FID="aharon-faceid";
+const getFid=()=>{try{return localStorage.getItem(FID)}catch(e){return null}};
+const b64=buf=>btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const rnd=n=>crypto.getRandomValues(new Uint8Array(n));
+async function canFaceId(){try{return !!(window.PublicKeyCredential&&await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable())}catch(e){return false}}
+async function enableFaceId(){
+  try{
+    const cred=await navigator.credentials.create({publicKey:{challenge:rnd(32),rp:{name:"אהרן מערכות"},
+      user:{id:rnd(16),name:"aharonsystems@gmail.com",displayName:"אהרן"},
+      pubKeyCredParams:[{type:"public-key",alg:-7},{type:"public-key",alg:-257}],
+      authenticatorSelection:{authenticatorAttachment:"platform",userVerification:"required",residentKey:"preferred"},timeout:60000}});
+    localStorage.setItem(FID,b64(cred.rawId));toast("Face ID הופעל");return true;
+  }catch(e){toast("Face ID לא הופעל");return false}
+}
+async function unlock(){
+  $("#lockMsg").textContent="";
+  try{
+    await navigator.credentials.get({publicKey:{challenge:rnd(32),allowCredentials:[{type:"public-key",id:unb64(getFid())}],userVerification:"required",timeout:60000}});
+    $("#lock").hidden=true;showApp();
+  }catch(e){$("#lockMsg").textContent="Face ID לא אושר. נסה שוב או היכנס עם סיסמה."}
+}
+$("#unlockBtn").addEventListener("click",unlock);
+$("#lockPass").addEventListener("click",async()=>{try{localStorage.removeItem(FID)}catch(e){}$("#lock").hidden=true;await sb.auth.signOut();showLogin()});
+async function offerFaceId(){
+  if(getFid()||!(await canFaceId()))return;
+  try{if(localStorage.getItem(FID+"-asked"))return;localStorage.setItem(FID+"-asked","1")}catch(e){}
+  const el=$("#sheet");
+  el.innerHTML=`<form id="fo" novalidate><h3>כניסה מהירה עם Face ID</h3><div class="note">בפעם הבאה שתפתח את האפליקציה, תיכנס עם הפנים במקום סיסמה.</div>
+   <div class="actions"><button class="btn" type="submit">הפעלה</button><button class="btn ghost" type="button" data-close>לא עכשיו</button></div></form>`;
+  el.hidden=false;el.onclick=e=>{if(e.target===el||e.target.closest("[data-close]"))el.hidden=true};
+  $("#fo").onsubmit=async e=>{e.preventDefault();el.hidden=true;await enableFaceId()};
+}
+
 async function boot(){
   const {data:{session}}=await sb.auth.getSession();
-  if(session){showApp()}else{showLogin()}
+  if(session&&getFid()){$("#login").hidden=true;$("#lock").hidden=false;if(location.hash!=="#reset")unlock()}
+  else if(session){showApp()}else{showLogin()}
   sb.auth.onAuthStateChange((ev,s)=>{
     if(ev==="SIGNED_OUT")showLogin();
-    if(ev==="SIGNED_IN"&&$("#app").hidden)showApp();
+    if(ev==="SIGNED_IN"&&$("#app").hidden&&$("#lock").hidden)showApp();
     if(ev==="PASSWORD_RECOVERY")setTimeout(newPassword,300);
   });
 }
@@ -229,16 +275,7 @@ $("#loginForm").addEventListener("submit",async e=>{
   const {error}=await sb.auth.signInWithPassword(c);
   $("#loginBtn").disabled=false;
   if(error){msg(/confirm/i.test(error.message)?"צריך קודם לאשר את המייל: פתח את המייל מ-Supabase ולחץ על הקישור.":"מייל או סיסמה לא נכונים.");return}
-  msg("");showApp();
-});
-$("#signupBtn").addEventListener("click",async()=>{
-  const c=creds();if(c.password.length<8){msg("בחר סיסמה של 8 תווים לפחות, ואז לחץ שוב.");$("#pass").focus();return}
-  $("#signupBtn").disabled=true;msg("יוצר…");
-  const {data:d,error}=await sb.auth.signUp({...c,options:{emailRedirectTo:location.href.split("#")[0]}});
-  $("#signupBtn").disabled=false;
-  if(error){msg("לא הצלחתי ליצור: "+error.message);return}
-  if(d.session){msg("");showApp();return}
-  msg("נשלח אליך מייל לאישור. לחץ על הקישור במייל, ואז חזור לכאן והיכנס עם הסיסמה.");
+  msg("");showApp();setTimeout(offerFaceId,800);
 });
 $("#resetBtn").addEventListener("click",async()=>{
   const {email}=creds();msg("שולח…");
@@ -318,7 +355,7 @@ function home(){
   ${tasks.length?`<h2>משימות קרובות</h2><div class="list">${tasks.slice(0,5).map(t=>row("tasks",t)).join("")}</div>`:""}
   ${owed.length?`<h2>עבודות שלא שולמו</h2><div class="list">${owed.sort((a,b)=>owedOf(b)-owedOf(a)).slice(0,6).map(j=>row("jobs",j)).join("")}</div>`:""}
   ${unknown.length?`<div class="note">${unknown.length} עבודות בלי סטטוס תשלום. <a href="#" data-go="jobs" data-f="unknown">לעבור עליהן</a> ולסמן מה שולם.</div>`:""}
-  <div class="bar"><button class="btn ghost" type="button" id="logout">יציאה מהחשבון</button></div>`;
+  <div class="bar"><button class="btn ghost" type="button" id="faceToggle">${getFid()?"כיבוי Face ID":"הפעלת Face ID"}</button><button class="btn ghost" type="button" id="logout">יציאה מהחשבון</button></div>`;
 }
 function quotesView(){
   const qs=openQuotes().sort((a,b)=>String(b.doc_date).localeCompare(String(a.doc_date)));
@@ -580,7 +617,8 @@ async function sharePlan(p){
 }
 
 document.addEventListener("click",async e=>{
-  if(e.target.closest("#logout")){await sb.auth.signOut();return}
+  if(e.target.closest("#logout")){try{localStorage.removeItem(FID)}catch(x){}await sb.auth.signOut();return}
+  if(e.target.closest("#faceToggle")){if(getFid()){try{localStorage.removeItem(FID)}catch(x){}toast("Face ID כובה")}else if(await canFaceId()){await enableFaceId()}else toast("המכשיר הזה לא תומך ב-Face ID");render();return}
   if(e.target.closest("#backProj")){curProject=null;selPt=null;render();return}
   const ptb=e.target.closest("[data-pt]");if(ptb){ptType=ptb.dataset.pt;document.querySelectorAll("[data-pt]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.pt===ptType));const p=curP();if(p&&!selPt)selBox(p);return}
   const mk=e.target.closest("[data-mk]");if(mk){selPt=mk.dataset.mk===selPt?null:mk.dataset.mk;const p=curP();drawMarkers(p);selBox(p);return}
