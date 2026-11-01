@@ -112,6 +112,14 @@ nav button[aria-current=page]{color:var(--accent)}
 .dot{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;color:#fff;font:700 10px var(--body)}
 .counts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 @media(min-width:640px){.counts{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.thumbs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.thumbs button,.thumbs label{aspect-ratio:1;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--chip);padding:0;cursor:pointer;display:grid;place-items:center;color:var(--muted);font:600 13px var(--body);text-align:center;max-width:100%}
+.thumbs img{width:100%;height:100%;object-fit:cover;display:block}
+.sigpad{position:fixed;inset:0;z-index:45;background:var(--bg);display:flex;flex-direction:column;
+  padding:calc(12px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));gap:10px}
+.sigpad canvas{flex:1;min-height:0;width:100%;background:#fff;border:2px dashed #9aa8c3;border-radius:14px;touch-action:none}
+.sigimg{background:#fff;border-radius:12px;border:1px solid var(--line);padding:6px;max-height:140px;object-fit:contain;width:100%}
+.btn.wa{background:#1fa855;color:#fff}
 @media (prefers-reduced-motion:no-preference){.sheet form{animation:up .18s ease-out}@keyframes up{from{transform:translateY(30px);opacity:.6}}}
 </style>
 </head>
@@ -198,7 +206,7 @@ const SCHEMA={
   ["vat",'מע"מ ששולם ₪',"num"],["for_job","עבור לקוח","text"],["receipt","יש קבלה?","select",0,["","כן","לא","מזומן"]],["notes","הערות","textarea"]]}
 };
 const data={jobs:[],stock:[],tasks:[],debts:[],expenses:[],morning_docs:[],projects:[]};
-let curProject=null;
+let curProject=null,curJob=null;
 let tab="home",q="",filt={},loaded=false,lastSync=null;
 
 const $=s=>document.querySelector(s);
@@ -339,7 +347,7 @@ $("#syncBtn").addEventListener("click",async()=>{
 /* ---------- nav ---------- */
 $("#nav").innerHTML=TABS.map(([k,l])=>`<button type="button" data-tab="${k}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>${l}</button>`).join("");
 $("#nav").addEventListener("click",e=>{const b=e.target.closest("button");if(b)go(b.dataset.tab)});
-function go(t){if(t!=="projects"||tab==="projects")curProject=null;tab=t;q="";render();window.scrollTo(0,0)}
+function go(t){if(t!=="projects"||tab==="projects")curProject=null;if(t!=="jobs"||tab==="jobs")curJob=null;tab=t;q="";render();window.scrollTo(0,0)}
 
 /* ---------- views ---------- */
 function render(){
@@ -349,6 +357,7 @@ function render(){
   if(tab==="home"){m.innerHTML=home();return}
   if(tab==="quotes"){m.innerHTML=quotesView();return}
   if(tab==="projects"&&curProject){projectView(m);return}
+  if(tab==="jobs"&&curJob){jobView(m);return}
   m.innerHTML=listView(tab);
   const s=$("#q");if(s){s.value=q;s.oninput=()=>{q=s.value.trim();m.querySelector(".list").outerHTML=listBody(tab)}}
 }
@@ -465,6 +474,8 @@ function row(k,x){
   if(k==="tasks"){const late=x.done!=="בוצע"&&x.date&&x.date<today();t=x.title;s=[x.client,x.date?heDate(x.date):""].filter(Boolean).join(" · ");p=x.done==="בוצע"?`<span class="pill good">בוצע</span>`:late?`<span class="pill bad">באיחור</span>`:`<span class="pill">פתוח</span>`}
   if(k==="debts"){t=x.name;s=[x.cat,x.due?"לתשלום "+heDate(x.due):"",x.monthly?ils(x.monthly)+" לחודש":""].filter(Boolean).join(" · ");n=x.amount?ils(x.amount):"—";p=x.paid==="שולם"?`<span class="pill good">שולם</span>`:(x.amount?"":`<span class="pill warn">חסר סכום</span>`)}
   if(k==="expenses"){t=x.vendor||x.cat;s=[x.cat,x.for_job,x.date?heDate(x.date):""].filter(Boolean).join(" · ");n=x.amount?ils(x.amount):"";p=x.vat?`<span class="pill">מע״מ ${ils(x.vat)}</span>`:""}
+  if(k==="jobs"){const ic=[(x.photos||[]).length?`📷${(x.photos||[]).length}`:"",x.signature_path?"✍️":""].filter(Boolean).join(" ");
+    return `<button type="button" class="row" data-open-job="${esc(x.id)}"><span class="t">${esc(t)}</span><span class="n">${n}</span><span class="s">${esc(s)}${ic?" · "+ic:""}</span><span class="p">${p}</span></button>`}
   if(k==="projects")return `<button type="button" class="row" data-open-project="${esc(x.id)}"><span class="t">${esc(t)}</span><span class="n"></span><span class="s">${esc(s)}</span><span class="p">${p}</span></button>`;
   return `<button type="button" class="row" data-edit="${k}" data-id="${esc(x.id)}"><span class="t">${esc(t)}</span><span class="n">${n}</span><span class="s">${esc(s)}</span><span class="p">${p}</span></button>`;
 }
@@ -517,7 +528,180 @@ function openSheet(k,id,prefill,note){
     if(res.error){toast("השמירה נכשלה. נסה שוב.");return}
     toast("נשמר");el.hidden=true;await loadAll();
     if(k==="projects"&&!id&&res.data){curProject=res.data.id;render()}
+    if(k==="jobs"&&!id&&res.data){curJob=res.data.id;render()}
   };
+}
+
+/* ---------- job card: photos, signature, WhatsApp ---------- */
+const BIZ_PHONE="055-975-9822";
+const fileUrl={};
+async function signed(paths){
+  const need=paths.filter(p=>p&&!fileUrl[p]);
+  if(need.length){const {data:r}=await sb.storage.from("jobfiles").createSignedUrls(need,3600*12);(r||[]).forEach(x=>{if(x.signedUrl)fileUrl[x.path]=x.signedUrl})}
+  return paths.map(p=>fileUrl[p]);
+}
+function curJ(){return data.jobs.find(x=>x.id===curJob)}
+function waPhone(p){let d=String(p||"").replace(/\D/g,"");if(d.startsWith("00"))d=d.slice(2);if(d.startsWith("0"))d="972"+d.slice(1);if(d.length===9&&d[0]==="5")d="972"+d;return d.length>=11?d:""}
+function jobDocs(j){
+  const name=String(j.client||"").trim();
+  const docs=data.morning_docs.filter(d=>[300,305,320,330,400,10].includes(d.type)).sort((a,b)=>String(b.doc_date).localeCompare(String(a.doc_date)));
+  const mine=name?docs.filter(d=>d.client&&(d.client.includes(name)||name.includes(d.client))):[];
+  return {mine,other:docs.filter(d=>!mine.includes(d)).slice(0,40)};
+}
+async function jobView(m){
+  const j=curJ();if(!j){curJob=null;render();return}
+  const photos=j.photos||[];
+  const {mine,other}=jobDocs(j);
+  const doc=data.morning_docs.find(d=>d.id===j.morning_doc_id);
+  const opt=d=>`<option value="${esc(d.id)}" ${d.id===j.morning_doc_id?"selected":""}>${esc(d.type_name)} ${esc(d.number)} · ${esc(d.client||"")} · ${ils(d.amount)} · ${heDate(d.doc_date)}</option>`;
+  const o=owedOf(j);
+  m.innerHTML=`<div class="bar"><button class="btn ghost" type="button" id="backJob">→ עבודות</button><h2 style="flex:1;min-width:0;overflow-wrap:anywhere">${esc(j.client||"עבודה")}</h2><button class="btn ghost" type="button" data-edit="jobs" data-id="${esc(j.id)}">פרטים</button></div>
+   <div class="note">${esc([j.place,j.address,j.date?heDate(j.date):"",j.phone].filter(Boolean).join(" · "))||"—"}${j.price?` · ${ils(j.price)}`:""} ${o>0?`<span class="pill bad">חייב ${ils(o)}</span>`:j.paid==="כן"?`<span class="pill good">שולם</span>`:""}</div>
+
+   <h2>סיכום העבודה ללקוח</h2>
+   <div class="f"><textarea id="jSum" style="min-height:90px" placeholder="מה בוצע, איזה ציוד הותקן, הערות ללקוח">${esc(j.summary??j.work??"")}</textarea></div>
+
+   <h2>תמונות (${photos.length})</h2>
+   <div class="thumbs" id="thumbs">${photos.map((p,i)=>`<button type="button" data-photo="${i}" aria-label="תמונה ${i+1}"><img alt="" data-path="${esc(p.path)}"></button>`).join("")}
+    <label><span>📷<br>הוספת תמונות</span><input type="file" accept="image/*" multiple id="jPhotos" hidden></label></div>
+
+   <h2>חתימת לקוח</h2>
+   ${j.signature_path?`<div class="list" style="padding:12px;display:grid;gap:8px"><img class="sigimg" id="sigImg" alt="חתימת הלקוח"><span class="s" style="color:var(--muted);font-size:13px">נחתם ע״י ${esc(j.signed_name||"")} · ${j.signed_at?new Date(j.signed_at).toLocaleString("he-IL",{day:"numeric",month:"numeric",year:"2-digit",hour:"2-digit",minute:"2-digit"}):""}</span>
+     <button class="btn ghost" type="button" id="signBtn">חתימה מחדש</button></div>`
+   :`<button class="btn" type="button" id="signBtn" style="padding:14px">✍️ החתמת לקוח על אישור ביצוע</button>`}
+
+   <h2>חשבונית ותשלום</h2>
+   <div class="f"><label for="jDoc">מסמך מ-Morning לשליחה ללקוח</label><select id="jDoc"><option value="">— בלי מסמך —</option>
+     ${mine.length?`<optgroup label="של הלקוח הזה">${mine.map(opt).join("")}</optgroup>`:""}<optgroup label="מסמכים אחרונים">${other.map(opt).join("")}</optgroup></select></div>
+   <div class="f"><label for="jPay">קישור לתשלום (אם יש – ביט, פייבוקס, דף תשלום)</label><input id="jPay" type="url" dir="ltr" value="${esc(j.pay_link||"")}" placeholder="https://"></div>
+
+   <div class="bar"><a class="btn wa" id="waBtn" style="flex:1;text-align:center;text-decoration:none" target="_blank" rel="noopener">שליחה ב-WhatsApp</a></div>
+   <div class="bar"><button class="btn ghost" type="button" id="shareReport" style="flex:1">שיתוף אישור ביצוע חתום (תמונה)</button></div>
+   ${waPhone(j.phone)?"":`<div class="note">אין מספר טלפון לעבודה הזו. הוסף אותו ב"פרטים" כדי שההודעה תיפתח ישר בצ'אט של הלקוח.</div>`}`;
+  // load images
+  const urls=await signed([...photos.map(p=>p.path),j.signature_path].filter(Boolean));
+  document.querySelectorAll("#thumbs img[data-path]").forEach(im=>{im.src=fileUrl[im.dataset.path]||""});
+  if(j.signature_path&&$("#sigImg"))$("#sigImg").src=fileUrl[j.signature_path]||"";
+  // autosave fields
+  const save=async(patch)=>{Object.assign(j,patch);const {error}=await sb.from("jobs").update({...patch,updated_at:new Date().toISOString()}).eq("id",j.id);if(error)toast("השמירה נכשלה");updWa()};
+  $("#jSum").onchange=()=>save({summary:$("#jSum").value.trim()});
+  $("#jSum").oninput=()=>{j.summary=$("#jSum").value;updWa()};
+  $("#jDoc").onchange=()=>save({morning_doc_id:$("#jDoc").value||null});
+  $("#jPay").onchange=()=>save({pay_link:$("#jPay").value.trim()||null});
+  $("#jPhotos").onchange=e=>addPhotos(j,[...e.target.files]);
+  const updWa=()=>{const a=$("#waBtn");if(!a)return;const ph=waPhone(j.phone);a.href=(ph?`https://wa.me/${ph}`:"https://wa.me/")+"?text="+encodeURIComponent(waText(j))};
+  updWa();
+}
+function waText(j){
+  const doc=data.morning_docs.find(d=>d.id===j.morning_doc_id);
+  const first=String(j.client||"").trim().split(/\s+/)[0]||"";
+  const lines=[`שלום ${first},`,`תודה שבחרת באהרן מערכות.`,""];
+  const sum=String(j.summary??j.work??"").trim();
+  if(sum)lines.push(`סיכום העבודה${j.date?` (${heDate(j.date)})`:""}:`,sum,"");
+  const o=owedOf(j)||(j.paid!=="כן"?num(j.price):0);
+  if(doc)lines.push(`${doc.type_name} מספר ${doc.number}: ${doc.url||""}`);
+  if(o)lines.push(`סכום לתשלום: ${ils(o)}`);
+  if(j.pay_link)lines.push(`לתשלום: ${j.pay_link}`);
+  if(doc||o||j.pay_link)lines.push("");
+  lines.push("לכל שאלה אני זמין.","אהרן מערכות – אבטחה ותקשורת בידיים טובות",BIZ_PHONE);
+  return lines.join("\n");
+}
+async function compress(file,max=1600,q=.82){
+  const im=await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=URL.createObjectURL(file)});
+  const sc=Math.min(1,max/Math.max(im.naturalWidth,im.naturalHeight));
+  const c=document.createElement("canvas");c.width=Math.round(im.naturalWidth*sc);c.height=Math.round(im.naturalHeight*sc);
+  c.getContext("2d").drawImage(im,0,0,c.width,c.height);
+  return await new Promise(ok=>c.toBlob(ok,"image/jpeg",q));
+}
+async function addPhotos(j,files){
+  if(!files.length)return;
+  const list=(j.photos||[]).slice();let n=0;
+  for(const f of files){
+    toast(`מעלה תמונה ${++n} מתוך ${files.length}…`);
+    try{const blob=await compress(f);const path=`${j.id}/${Date.now()}-${n}.jpg`;
+      const {error}=await sb.storage.from("jobfiles").upload(path,blob,{contentType:"image/jpeg"});if(error)throw error;
+      list.push({path,caption:"",at:new Date().toISOString()})}catch(e){toast("תמונה אחת לא עלתה");}
+  }
+  const {error}=await sb.from("jobs").update({photos:list,updated_at:new Date().toISOString()}).eq("id",j.id);
+  if(error){toast("השמירה נכשלה");return}
+  j.photos=list;toast("התמונות נשמרו");render();
+}
+function photoSheet(j,i){
+  const p=(j.photos||[])[i];if(!p)return;const el=$("#sheet");
+  el.innerHTML=`<form id="ph" novalidate><img src="${esc(fileUrl[p.path]||"")}" alt="" style="width:100%;border-radius:12px">
+   <div class="f"><label for="phc">תיאור (למשל: ארון תקשורת, מצלמה בכניסה)</label><input id="phc" value="${esc(p.caption||"")}"></div>
+   <div class="actions"><button class="btn" type="submit">שמירה</button><button class="btn ghost" type="button" data-close>סגירה</button><button class="btn danger" type="button" id="phDel">מחיקה</button></div></form>`;
+  el.hidden=false;
+  el.onclick=async e=>{if(e.target===el||e.target.closest("[data-close]")){el.hidden=true;return}
+    const d=e.target.closest("#phDel");if(d){if(!d.dataset.sure){d.dataset.sure=1;d.textContent="ללחוץ שוב למחיקה";return}
+      const list=j.photos.filter((_,k)=>k!==i);await sb.storage.from("jobfiles").remove([p.path]);
+      await sb.from("jobs").update({photos:list}).eq("id",j.id);j.photos=list;el.hidden=true;render()}};
+  $("#ph").onsubmit=async e=>{e.preventDefault();const list=j.photos.slice();list[i]={...p,caption:$("#phc").value.trim()};
+    await sb.from("jobs").update({photos:list}).eq("id",j.id);j.photos=list;el.hidden=true;toast("נשמר")};
+}
+function signaturePad(j){
+  const ov=document.createElement("div");ov.className="sigpad";
+  ov.innerHTML=`<h3 style="margin:0;font:700 18px var(--display)">אישור ביצוע עבודה</h3>
+   <div class="note" style="font-size:14px">אני מאשר/ת שהעבודה${j.address?` ב${esc(j.address)}`:""} בוצעה, והציוד הותקן ונמסר לשביעות רצוני.</div>
+   <div class="f"><label for="sgName">שם החותם</label><input id="sgName" value="${esc(j.signed_name||j.client||"")}"></div>
+   <canvas id="sgCanvas" aria-label="משטח חתימה"></canvas>
+   <div class="actions"><button class="btn" type="button" id="sgSave">שמירת החתימה</button><button class="btn ghost" type="button" id="sgClear">ניקוי</button><button class="btn ghost" type="button" id="sgCancel">ביטול</button></div>`;
+  document.body.appendChild(ov);
+  const c=ov.querySelector("#sgCanvas"),g=c.getContext("2d");let drawing=false,dirty=false,last=null;
+  const fit=()=>{const r=c.getBoundingClientRect(),dpr=window.devicePixelRatio||1;c.width=r.width*dpr;c.height=r.height*dpr;g.setTransform(dpr,0,0,dpr,0,0);g.lineWidth=2.6;g.lineCap="round";g.lineJoin="round";g.strokeStyle="#0c1d47";dirty=false};
+  setTimeout(fit,50);
+  const pt=e=>{const r=c.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top}};
+  c.addEventListener("pointerdown",e=>{drawing=true;last=pt(e);c.setPointerCapture(e.pointerId);e.preventDefault()});
+  c.addEventListener("pointermove",e=>{if(!drawing)return;const p=pt(e);g.beginPath();g.moveTo(last.x,last.y);g.lineTo(p.x,p.y);g.stroke();last=p;dirty=true;e.preventDefault()});
+  ["pointerup","pointercancel","pointerleave"].forEach(ev=>c.addEventListener(ev,()=>drawing=false));
+  ov.querySelector("#sgClear").onclick=fit;
+  ov.querySelector("#sgCancel").onclick=()=>ov.remove();
+  ov.querySelector("#sgSave").onclick=async()=>{
+    const name=ov.querySelector("#sgName").value.trim();
+    if(!dirty){toast("צריך לחתום על המשטח");return}
+    if(!name){toast("צריך לכתוב את שם החותם");return}
+    const b=ov.querySelector("#sgSave");b.disabled=true;b.textContent="שומר…";
+    // white background so it reads well everywhere
+    const out=document.createElement("canvas");out.width=c.width;out.height=c.height;const o=out.getContext("2d");o.fillStyle="#fff";o.fillRect(0,0,out.width,out.height);o.drawImage(c,0,0);
+    const blob=await new Promise(ok=>out.toBlob(ok,"image/png"));
+    const path=`${j.id}/signature-${Date.now()}.png`;
+    const up=await sb.storage.from("jobfiles").upload(path,blob,{contentType:"image/png"});
+    if(up.error){toast("החתימה לא נשמרה. נסה שוב.");b.disabled=false;b.textContent="שמירת החתימה";return}
+    const patch={signature_path:path,signed_name:name,signed_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+    const {error}=await sb.from("jobs").update(patch).eq("id",j.id);
+    if(error){toast("החתימה לא נשמרה");b.disabled=false;return}
+    Object.assign(j,patch);ov.remove();toast("החתימה נשמרה");render();
+  };
+}
+function wrap(g,text,maxW){const out=[];for(const para of String(text).split("\n")){let line="";for(const w of para.split(/\s+/)){const t=line?line+" "+w:w;if(g.measureText(t).width>maxW&&line){out.push(line);line=w}else line=t}out.push(line)}return out}
+async function shareReport(j){
+  toast("מכין את האישור…");
+  try{
+    const load=src=>new Promise((ok,no)=>{const i=new Image();i.crossOrigin="anonymous";i.onload=()=>ok(i);i.onerror=no;i.src=src});
+    await signed([...(j.photos||[]).map(p=>p.path),j.signature_path].filter(Boolean));
+    const W=1200,P=60;const c=document.createElement("canvas");const g=c.getContext("2d");
+    g.font="500 30px Heebo, Arial";const sumLines=wrap(g,String(j.summary??j.work??"").trim()||"—",W-2*P);
+    const ph=(j.photos||[]).slice(0,6);const thumbH=ph.length?Math.ceil(ph.length/3)*370:0;
+    const H=260+sumLines.length*44+(ph.length?60+thumbH:0)+(j.signature_path?360:120)+120;
+    c.width=W;c.height=H;g.fillStyle="#fff";g.fillRect(0,0,W,H);
+    g.fillStyle="#0c1d47";g.fillRect(0,0,W,140);g.direction="rtl";g.textAlign="right";g.fillStyle="#fff";
+    g.font="700 46px Heebo, Arial";g.fillText("אישור ביצוע עבודה",W-P,70);g.font="500 26px Heebo, Arial";g.fillText("אהרן מערכות · "+BIZ_PHONE,W-P,115);
+    let y=200;g.fillStyle="#14213d";g.font="700 32px Heebo, Arial";
+    g.fillText([j.client,j.address||j.place,j.date?heDate(j.date):""].filter(Boolean).join(" · "),W-P,y);y+=56;
+    g.font="500 30px Heebo, Arial";for(const l of sumLines){g.fillText(l,W-P,y);y+=44}
+    if(ph.length){y+=20;const tw=(W-2*P-2*20)/3;let i=0;
+      for(const p of ph){try{const im=await load(fileUrl[p.path]);const col=i%3,row=Math.floor(i/3);const x=W-P-tw-col*(tw+20),yy=y+row*370;
+        const s=Math.max(tw/im.width,350/im.height);const sw=tw/s,sh=350/s;g.drawImage(im,(im.width-sw)/2,(im.height-sh)/2,sw,sh,x,yy,tw,350)}catch(e){}i++}
+      y+=thumbH+20}
+    g.fillStyle="#5d6b85";g.font="500 26px Heebo, Arial";g.fillText("אני מאשר/ת שהעבודה בוצעה, והציוד הותקן ונמסר לשביעות רצוני.",W-P,y+30);y+=60;
+    if(j.signature_path){try{const s=await load(fileUrl[j.signature_path]);const sh=220,sw=Math.min(W-2*P,s.width*sh/s.height);g.drawImage(s,W-P-sw,y,sw,sh)}catch(e){}y+=240;
+      g.fillStyle="#14213d";g.font="600 28px Heebo, Arial";g.fillText(`${j.signed_name||""} · ${j.signed_at?new Date(j.signed_at).toLocaleString("he-IL",{day:"numeric",month:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit"}):""}`,W-P,y)}
+    else{g.fillStyle="#c0392b";g.font="600 28px Heebo, Arial";g.fillText("טרם נחתם",W-P,y+10)}
+    const blob=await new Promise(ok=>c.toBlob(ok,"image/jpeg",.9));
+    const file=new File([blob],`אישור ביצוע - ${j.client||"לקוח"}.jpg`,{type:"image/jpeg"});
+    if(navigator.canShare&&navigator.canShare({files:[file]}))await navigator.share({files:[file],title:"אישור ביצוע עבודה"});
+    else{const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=file.name;document.body.appendChild(a);a.click();a.remove()}
+  }catch(e){if(e&&e.name!=="AbortError")toast("לא הצלחתי להכין את האישור")}
 }
 
 /* ---------- barcode scanner ---------- */
@@ -738,6 +922,11 @@ document.addEventListener("click",async e=>{
   if(e.target.closest("#logout")){try{localStorage.removeItem(FID)}catch(x){}await sb.auth.signOut();return}
   if(e.target.closest("#faceToggle")){if(getFid()){try{localStorage.removeItem(FID)}catch(x){}toast("Face ID כובה")}else if(await canFaceId()){await enableFaceId()}else toast("המכשיר הזה לא תומך ב-Face ID");render();return}
   if(e.target.closest("#backProj")){curProject=null;selPt=null;render();return}
+  if(e.target.closest("#backJob")){curJob=null;render();return}
+  const oj=e.target.closest("[data-open-job]");if(oj){curJob=oj.dataset.openJob;tab="jobs";render();window.scrollTo(0,0);return}
+  if(e.target.closest("#signBtn")){signaturePad(curJ());return}
+  const ph=e.target.closest("[data-photo]");if(ph){photoSheet(curJ(),+ph.dataset.photo);return}
+  if(e.target.closest("#shareReport")){shareReport(curJ());return}
   const ptb=e.target.closest("[data-pt]");if(ptb){ptType=ptb.dataset.pt;document.querySelectorAll("[data-pt]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.pt===ptType));const p=curP();if(p&&!selPt)selBox(p);return}
   const mk=e.target.closest("[data-mk]");if(mk){selPt=mk.dataset.mk===selPt?null:mk.dataset.mk;const p=curP();drawMarkers(p);selBox(p);return}
   if(e.target.closest("#ptSave")){const p=curP(),pt=p.points.find(x=>x.id===selPt);if(pt)pt.label=$("#ptLabel").value.trim().slice(0,12);selPt=null;afterPoints(p);return}

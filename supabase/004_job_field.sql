@@ -1,0 +1,10 @@
+alter table public.jobs add column if not exists photos jsonb default '[]';
+alter table public.jobs add column if not exists summary text;
+alter table public.jobs add column if not exists signature_path text;
+alter table public.jobs add column if not exists signed_name text;
+alter table public.jobs add column if not exists signed_at timestamptz;
+alter table public.jobs add column if not exists morning_doc_id text;
+alter table public.jobs add column if not exists pay_link text;
+insert into storage.buckets (id, name, public) values ('jobfiles','jobfiles', false) on conflict (id) do nothing;
+drop policy if exists jobfiles_owner on storage.objects;
+create policy jobfiles_owner on storage.objects for all to authenticated using (bucket_id = 'jobfiles' and public.is_owner()) with check (bucket_id = 'jobfiles' and public.is_owner());
