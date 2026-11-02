@@ -34,15 +34,35 @@ function parseJson(t: string) {
   return JSON.parse(t.slice(s, e + 1));
 }
 
+let gModel = "";
+async function geminiModels(key: string) {
+  // flash models that can read images, newest first; Google retires names and some need paid credit
+  const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=" + encodeURIComponent(key));
+  const d = await r.json().catch(() => ({}));
+  const ver = (n: string) => Number((n.match(/gemini-(\d+(?:\.\d+)?)/) || [])[1] || 0);
+  const list = (d.models || []).map((m: any) => ({n: String(m.name).replace(/^models\//, ""), g: m.supportedGenerationMethods || []}))
+    .filter((m: any) => m.g.includes("generateContent") && /^gemini-([\d.]+-)?flash(-lite)?(-latest|-\d+)?$/.test(m.n))
+    .sort((a: any, b: any) => (a.n.includes("lite") ? 1 : 0) - (b.n.includes("lite") ? 1 : 0) || ver(b.n) - ver(a.n) || a.n.length - b.n.length)
+    .map((m: any) => m.n);
+  return list.length ? list : ["gemini-flash-latest", "gemini-flash-lite-latest"];
+}
+
 async function gemini(key: string, img: string, text: string) {
-  const model = Deno.env.get("GEMINI_MODEL") || "gemini-2.5-flash";
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
+  const call = (model: string) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
     method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({contents: [{parts: [{inline_data: {mime_type: "image/jpeg", data: img}}, {text}]}],
       generationConfig: {responseMimeType: "application/json", temperature: 0.1}})});
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error("Gemini " + r.status + ": " + (d.error?.message || "").slice(0, 160));
-  return parseJson((d.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || "").join(""));
+  const tryList = gModel ? [gModel] : [Deno.env.get("GEMINI_MODEL") || "", ...(await geminiModels(key))].filter(Boolean).slice(0, 8);
+  let last = "", tried: string[] = [];
+  for (const m of tryList) {
+    const r = await call(m); tried.push(m + ":" + r.status);
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) { gModel = m; return parseJson((d.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || "").join("")); }
+    last = "Gemini " + r.status + ": " + (d.error?.message || "").slice(0, 140);
+    if (gModel) { gModel = ""; return gemini(key, img, text); }
+    if (![402, 403, 404, 429].includes(r.status)) break;
+  }
+  throw new Error(last + " [" + tried.join(", ") + "]");
 }
 
 async function claude(key: string, img: string, text: string) {
@@ -65,7 +85,8 @@ Deno.serve(async (req) => {
   const { data: u } = await sb.auth.getUser(jwt);
   if (!u?.user || u.user.email !== OWNER) return json({ok: false, message: "אין הרשאה"}, 401);
 
-  const gKey = Deno.env.get("GEMINI_API_KEY"), aKey = Deno.env.get("ANTHROPIC_API_KEY");
+  const env = Deno.env.toObject(), find = (re: RegExp) => Object.entries(env).find(([k, v]) => re.test(k) && v)?.[1];
+  const gKey = env.GEMINI_API_KEY || find(/gemini/i), aKey = env.ANTHROPIC_API_KEY || find(/anthropic|claude/i);
   if (!gKey && !aKey) return json({ok: false, nokey: true, message: "עוד לא חובר מפתח AI"});
   const body = await req.json().catch(() => ({}));
   const img = String(body.image || "").replace(/^data:image\/\w+;base64,/, "");
@@ -77,7 +98,7 @@ Deno.serve(async (req) => {
     const r = aKey ? await claude(aKey, img, text) : await gemini(gKey!, img, text);
     if (r.morning_item_id && !(rows || []).some((s: any) => s.morning_item_id === r.morning_item_id)) r.morning_item_id = null;
     if (!CATS.includes(r.category)) r.category = "אחר";
-    return json({ok: true, item: r});
+    return json({ok: true, item: r, model: aKey ? "claude" : gModel});
   } catch (e) {
     return json({ok: false, message: String((e as Error).message || e)}, 500);
   }
