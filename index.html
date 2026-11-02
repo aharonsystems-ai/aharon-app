@@ -147,6 +147,13 @@ nav button[aria-current=page]{color:var(--accent)}
 @keyframes pop{from{opacity:0;transform:scale(.55) rotate(-8deg)}}
 @keyframes fadeup{from{opacity:0;transform:translateY(8px)}}
 @media (prefers-reduced-motion:reduce){.home.anim>*,#splash *{animation:none!important}#splash circle{stroke-dashoffset:0}}
+.drow{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:11px 14px;border-top:1px solid var(--line)}
+.drow:first-child{border-top:0}
+.drow .dm{display:grid;gap:2px;min-width:0}
+.drow .dm span{color:var(--muted);font-size:13px}
+.drow .dd{color:var(--fg)!important;overflow-wrap:anywhere}
+.drow .dr{display:grid;gap:6px;justify-items:end;flex:none}
+.drow .dr .btn{padding:6px 12px;font-size:13px;text-decoration:none}
 .sugg{border:1px solid var(--line);border-radius:10px;background:var(--card);margin-top:4px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.12)}
 .sugg button{display:grid;gap:1px;width:100%;text-align:right;padding:10px 12px;border:0;border-top:1px solid var(--line);background:none;color:inherit;font:inherit;cursor:pointer}
 .sugg button:first-child{border-top:0}
@@ -796,7 +803,13 @@ function waPhone(p){let d=String(p||"").replace(/\D/g,"");if(d.startsWith("00"))
 function jobDocs(j){
   const name=String(j.client||"").trim();
   const docs=data.morning_docs.filter(d=>[300,305,320,330,400,10].includes(d.type)).sort((a,b)=>String(b.doc_date).localeCompare(String(a.doc_date)));
-  const mine=name?docs.filter(d=>d.client&&(d.client.includes(name)||name.includes(d.client))):[];
+  const place=String(j.place||"").split(",")[0].trim(), ph=String(j.phone||"").replace(/\D/g,"").slice(-9);
+  const hit=d=>{const c=String(d.client||"").trim();if(!c)return false;
+    // same name, or one contains the other when the shorter is a full name (2+ words) - "דני" alone must not match "דני כהן"
+    const like=(x,y)=>{x=normName(x);y=normName(y);if(!x||!y)return false;if(x===y)return true;const [sh,lo]=x.length<y.length?[x,y]:[y,x];return sh.split(" ").length>=2&&lo.includes(sh)};
+    if(like(c,name)||like(c,place))return true;
+    return ph.length===9&&String(d.client_phone||"").replace(/\D/g,"").slice(-9)===ph};
+  const mine=docs.filter(d=>hit(d)||d.id===j.morning_doc_id);
   return {mine,other:docs.filter(d=>!mine.includes(d)).slice(0,40)};
 }
 async function jobView(m){
@@ -810,6 +823,11 @@ async function jobView(m){
    <div class="note">${esc([j.place,j.address,j.date?heDate(j.date):"",j.phone].filter(Boolean).join(" · "))||"—"}${j.price?` · ${ils(j.price)}`:""} ${o>0?`<span class="pill bad">חייב ${ils(o)}</span>`:j.paid==="כן"?`<span class="pill good">שולם</span>`:""}</div>
 
    ${j.project_id&&data.projects.find(x=>x.id===j.project_id)?`<button class="btn ghost" type="button" data-open-project="${esc(j.project_id)}">📐 פרויקט: ${esc(data.projects.find(x=>x.id===j.project_id).name)}</button>`:""}
+   <h2>מסמכים ב־Morning (${mine.length})</h2>
+   <div class="list">${mine.length?mine.map(d=>`<div class="drow"><div class="dm"><b>${esc(d.type_name)} ${esc(d.number)}${d.id===j.morning_doc_id?' <span class="pill good">מקושר לעבודה</span>':""}</b>
+      <span>${heDate(d.doc_date)} · ${esc(d.client||"")}${d.status===0&&d.type!==400?' · <span style="color:var(--bad)">פתוח</span>':""}</span>
+      ${d.description?`<span class="dd">${esc(d.description)}</span>`:""}</div>
+     <div class="dr"><b>${ils(d.amount)}</b>${d.url?`<a class="btn ghost" href="${esc(d.url)}" target="_blank" rel="noopener">📄 צפייה</a>`:""}</div></div>`).join(""):`<div class="empty">לא נמצאו מסמכים ב־Morning על השם, המקום או הטלפון של העבודה.</div>`}</div>
    <h2>סיכום העבודה ללקוח</h2>
    <div class="f"><textarea id="jSum" style="min-height:90px" placeholder="מה בוצע, איזה ציוד הותקן, הערות ללקוח">${esc(j.summary??j.work??"")}</textarea></div>
 
