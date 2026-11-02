@@ -530,7 +530,7 @@ function sorted(k){
 }
 function listView(k){
   const cur=filt[k]||FILTERS[k][0][0];
-  const extra=k==="stock"?`<div class="bar"><button class="btn" type="button" id="scanBtn" style="flex:1">📷 סריקת ברקוד</button><button class="btn ghost" type="button" id="pullItems">משיכת פריטים מ-Morning</button></div>`:"";
+  const extra=k==="stock"?`<div class="bar"><label class="btn" style="flex:1;text-align:center;cursor:pointer">🤖 צילום מדבקה (AI)<input type="file" accept="image/*" id="aiFile" hidden></label><button class="btn ghost" type="button" id="scanBtn">📷 ברקוד</button></div><div class="bar"><button class="btn ghost" type="button" id="pullItems" style="flex:1">משיכת פריטים מ-Morning</button></div>`:"";
   return `<div class="bar"><h2 style="flex:1">${TABS.find(t=>t[0]===k)[1]}</h2><button class="btn${k==="stock"?" ghost":""}" type="button" data-new="${k}">+ ${SCHEMA[k].title}</button></div>
   ${extra}
   <div class="bar"><input id="q" type="search" placeholder="חיפוש" aria-label="חיפוש"></div>
@@ -851,7 +851,7 @@ function loadScript(src){return new Promise((ok,no)=>{if(document.querySelector(
 async function startScan(){
   const ov=document.createElement("div");ov.className="scan";
   ov.innerHTML=`<video playsinline muted autoplay></video><div class="frame"></div><div class="hint">כוון את הברקוד למסגרת</div>
-   <div class="bar2"><span id="scanMsg" style="min-width:0">פותח מצלמה…</span><span style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn" type="button" id="snapLabel">📸 צילום מדבקה</button><button class="btn ghost" type="button" id="manualCode">הקלדה</button><button class="btn ghost" type="button" id="closeScan">סגירה</button></span></div>`;
+   <div class="bar2"><span id="scanMsg" style="min-width:0">פותח מצלמה…</span><span style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn ghost" type="button" id="torchBtn" aria-pressed="false">🔦 פלאש</button><button class="btn" type="button" id="snapLabel">📸 צילום מדבקה</button><button class="btn ghost" type="button" id="manualCode">הקלדה</button><button class="btn ghost" type="button" id="closeScan">סגירה</button></span></div>`;
   document.body.appendChild(ov);
   const video=ov.querySelector("video"),msgEl=ov.querySelector("#scanMsg");
   let done=false,stream=null,timer=null,reader=null;
@@ -863,6 +863,17 @@ async function startScan(){
     let code="";try{if("BarcodeDetector" in window){const r=await new BarcodeDetector().detect(c);code=r&&r[0]?r[0].rawValue:""}else if(window.ZXing){const r=await new ZXing.BrowserMultiFormatReader().decodeFromImageUrl(c.toDataURL("image/jpeg",.9));code=r?r.getText():""}}catch(e){}
     stop();handleBarcode(code,c,true)};
   ov.querySelector("#manualCode").onclick=()=>{stop();manualBarcode()};
+  let torch=false;
+  ov.querySelector("#torchBtn").onclick=async()=>{
+    const b=ov.querySelector("#torchBtn"),src=stream||video.srcObject,tr=src&&src.getVideoTracks&&src.getVideoTracks()[0];
+    if(!tr){msgEl.textContent="המצלמה עוד לא מוכנה";return}
+    const caps=tr.getCapabilities?tr.getCapabilities():{};
+    try{
+      if(caps.torch===undefined&&!("torch" in (tr.getSettings?tr.getSettings():{})))throw new Error("no torch");
+      torch=!torch;await tr.applyConstraints({advanced:[{torch}]});
+      b.setAttribute("aria-pressed",torch);b.textContent=torch?"🔦 כיבוי פלאש":"🔦 פלאש";
+    }catch(e){torch=false;msgEl.textContent="הדפדפן לא מאפשר פלאש כאן. אפשר 🤖 צילום מדבקה (AI) – שם יש פלאש של המצלמה."}
+  };
   try{
     if("BarcodeDetector" in window){
       stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}},audio:false});
@@ -957,6 +968,42 @@ async function handleBarcode(code,canvas,fromSnap){
   }
   openSheet("stock",null,pre,note);
 }
+
+/* ---------- AI sticker reading ---------- */
+async function aiLabel(file){
+  toast("🤖 קורא את המדבקה… (כמה שניות)");
+  try{
+    const blob=await compress(file,1600,.85);
+    const b64=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(",")[1]);r.onerror=no;r.readAsDataURL(blob)});
+    const {data:r,error}=await sb.functions.invoke("label",{body:{image:b64}});
+    if(error&&!r){toast("הקריאה נכשלה. בדוק אינטרנט ונסה שוב.");return}
+    if(!r||!r.ok){toast(r&&r.nokey?"ה-AI עוד לא מחובר (חסר מפתח)":(r&&r.message)||"הקריאה נכשלה");return}
+    applyLabel(r.item);
+  }catch(e){toast("לא הצלחתי לקרוא את התמונה")}
+}
+function applyLabel(it){
+  const up=v=>String(v||"").toUpperCase().replace(/[\s-]/g,"");
+  const hit=(it.morning_item_id&&data.stock.find(s=>s.morning_item_id===it.morning_item_id))
+    ||(it.model&&data.stock.find(s=>s.model&&up(s.model)===up(it.model)))
+    ||(it.barcode&&data.stock.find(s=>s.barcode&&s.barcode===it.barcode));
+  const what=[it.brand,it.model].filter(Boolean).join(" ")||it.name_en||"מוצר";
+  const unsure=it.confidence==="low"?" (הקריאה לא בטוחה – בדוק את הדגם)":"";
+  if(hit){
+    const inMorning=!!hit.morning_item_id;
+    openSheet("stock",hit.id,null,`🤖 זוהה: ${what}${unsure}. ${inMorning?"מקושר לפריט ב-Morning":"נמצא במלאי"}: ${hit.name}. הכמות עלתה ב-1 – תקן אם צריך ושמור.`);
+    const f=$("#edit");if(!f)return;const E=f.elements;
+    const set=(k,v)=>{if(E[k]&&v&&!String(E[k].value).trim())E[k].value=v};
+    set("model",it.model);set("brand",it.brand);set("name_en",it.name_en);set("barcode",it.barcode);set("notes",it.specs);
+    if(E.category&&it.category&&(!E.category.value||E.category.value==="מ-Morning"))E.category.value=it.category;
+    if(it.serial&&E.serials&&!E.serials.value.includes(it.serial))E.serials.value=[E.serials.value.trim(),it.serial].filter(Boolean).join("\n");
+    if(E.qty)E.qty.value=num(E.qty.value)+1;
+    return;
+  }
+  openSheet("stock",null,{name:it.name_he||it.name_en||"",name_en:it.name_en||"",model:it.model||"",brand:it.brand||"",category:it.category||"",
+    barcode:it.barcode||"",serials:it.serial||"",notes:it.specs||"",qty:1},
+    `🤖 זוהה: ${what}${unsure}. המוצר לא נמצא ב-Morning ולא במלאי. בדוק את הפרטים ושמור – אחרי השמירה אפשר להוסיף אותו ל-Morning בלחיצה.`);
+}
+document.addEventListener("change",e=>{if(e.target&&e.target.id==="aiFile"&&e.target.files&&e.target.files[0]){aiLabel(e.target.files[0]);e.target.value=""}});
 
 /* ---------- projects: engineer plan with markers ---------- */
 let ptType="cam",selPt=null;const planUrl={};let saveT=null;
