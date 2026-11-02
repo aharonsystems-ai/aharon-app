@@ -21,3 +21,9 @@ create policy owner_all on public.quote_followups for all using (public.is_owner
 alter table public.projects add column if not exists quote_doc_id text;
 alter table public.projects add column if not exists job_id uuid;
 alter table public.jobs add column if not exists project_id uuid;
+
+-- Recorder (NVR/DVR) details per job (run 2026-11-02)
+alter table public.jobs add column if not exists nvr_model text;
+alter table public.jobs add column if not exists nvr_serial text;
+alter table public.jobs add column if not exists nvr_user text;
+alter table public.jobs add column if not exists nvr_pass text;

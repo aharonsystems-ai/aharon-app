@@ -101,6 +101,12 @@ nav button[aria-current=page]{color:var(--accent)}
 .scan .hint{position:absolute;top:calc(20px + env(safe-area-inset-top,0px));left:0;right:0;text-align:center;color:#fff;font-weight:700;text-shadow:0 1px 3px #000}
 .qtyrow{display:flex;gap:8px;align-items:center}
 .qtyrow input{flex:1}
+.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.pair .f label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sec{font:700 15px var(--display);margin:6px 0 0;border-top:1px solid var(--line);padding-top:12px}
+.secret{-webkit-text-security:disc}
+.secret:focus{-webkit-text-security:none}
+.sheet form .actions{position:sticky;bottom:-1px;background:var(--card);padding:10px 0 calc(8px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);z-index:2}
 .sugg{border:1px solid var(--line);border-radius:10px;background:var(--card);margin-top:4px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.12)}
 .sugg button{display:grid;gap:1px;width:100%;text-align:right;padding:10px 12px;border:0;border-top:1px solid var(--line);background:none;color:inherit;font:inherit;cursor:pointer}
 .sugg button:first-child{border-top:0}
@@ -193,10 +199,12 @@ const DEBT_CATS=["ספק","ביטוח לאומי","מס הכנסה",'מע"מ',"�
 const EXP_CATS=["ציוד","כלי עבודה","דלק ורכב","ביטוח לאומי","מס הכנסה",'מע"מ',"תקשורת","רואת חשבון","עובדים","אחר"];
 const SCHEMA={
  jobs:{title:"עבודה",fields:[
-  ["client","שם לקוח","text",1],["phone","טלפון","tel"],["place","עסק / מיקום","text"],["address","כתובת","text"],
-  ["work","פרטי עבודה","textarea"],["date","תאריך עבודה","date"],["price","מחיר גבייה ₪","num"],["cost","עלויות ₪","num"],
-  ["profit","רווח בפועל ₪","num"],["paid","שולם?","select",0,["לא ידוע","כן","לא","חלקי"]],["paid_amount","כמה שולם ₪ (אם חלקי)","num"],
-  ["receipt","הוצאה קבלה?","select",0,["","כן","לא"]],["notes","הערות","textarea"]]},
+  ["client","שם לקוח","text",1],["phone","טלפון","tel",0,null,"half"],["place","עסק / מיקום","text",0,null,"half"],["address","כתובת","text"],
+  ["work","פרטי עבודה","textarea"],["date","תאריך עבודה","date",0,null,"half"],["price","מחיר גבייה ₪","num",0,null,"half"],["cost","עלויות ₪","num",0,null,"half"],
+  ["profit","רווח בפועל ₪","num",0,null,"half"],["paid","שולם?","select",0,["לא ידוע","כן","לא","חלקי"],"half"],["paid_amount","כמה שולם (חלקי) ₪","num",0,null,"half"],
+  ["receipt","הוצאה קבלה?","select",0,["","כן","לא"],"half"],["notes","הערות","textarea"],
+  ["nvr_model","דגם","ltr",0,null,"half","מערכת הקלטה (NVR / DVR)"],["nvr_serial","מספר סידורי (S/N)","ltr",0,null,"half"],
+  ["nvr_user","שם משתמש","ltr",0,null,"half"],["nvr_pass","סיסמה","secret",0,null,"half"]]},
  stock:{title:"פריט מלאי",fields:[["name","שם בעברית","text",1],["name_en","שם באנגלית / כמו על המדבקה","text"],["model","דגם","text"],["category","קטגוריה","select",0,["","מצלמות","מקליטים","תקשורת","כבלים","אביזרים","אזעקה","אינטרקום","בקרת כניסה","אודיו","מגברי קליטה","מ-Morning","אחר"]],
   ["qty","כמות במלאי","num"],["min_qty","התראה מתחת ל־","num"],["brand","יצרן","text"],["barcode","ברקוד","text"],["serials","מספרים סידוריים (S/N)","textarea"],
   ["unit_cost","מחיר קנייה ליחידה ₪","num"],["sell_price","מחיר מכירה ₪","num"],["supplier","ספק","text"],["notes","הערות","textarea"]]},
@@ -599,6 +607,12 @@ async function syncClient(saved,before,isNew){
 }
 
 /* ---------- edit sheet ---------- */
+function renderFields(F,field){
+  let out="",buf=[];const flush=()=>{if(buf.length){out+=`<div class="pair">${buf.join("")}</div>`;buf=[]}};
+  for(const fd of F){if(fd[6]){flush();out+=`<h4 class="sec">${fd[6]}</h4>`}
+    if(fd[5]==="half"){buf.push(field(fd));if(buf.length===2)flush()}else{flush();out+=field(fd)}}
+  flush();return out;
+}
 function openSheet(k,id,prefill,note){
   const x=id?data[k].find(d=>d.id===id):Object.assign({},prefill||{}); if(!x)return;
   const F=SCHEMA[k].fields;
@@ -608,6 +622,7 @@ function openSheet(k,id,prefill,note){
     if(k==="stock"&&key==="qty")return `<div class="f"><label for="${idA}">${label}</label><div class="qtyrow"><button type="button" data-q="-1" aria-label="פחות">−</button><input id="${idA}" name="${key}" type="number" inputmode="decimal" step="any" value="${esc(v)}"><button type="button" data-q="1" aria-label="יותר">+</button></div></div>`;
     if(type==="select")return `<div class="f"><label for="${idA}">${label}</label><select id="${idA}" name="${key}">${opts.map(o=>`<option ${o===v?"selected":""}>${esc(o)}</option>`).join("")}</select></div>`;
     if(type==="textarea")return `<div class="f"><label for="${idA}">${label}</label><textarea id="${idA}" name="${key}">${esc(v)}</textarea></div>`;
+    if(type==="ltr"||type==="secret")return `<div class="f"><label for="${idA}">${label}</label><input id="${idA}" name="${key}" type="text" dir="ltr" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" ${type==="secret"?'class="secret"':""} value="${esc(v)}"></div>`;
     const it=type==="num"?'type="number" inputmode="decimal" step="any"':type==="date"?'type="date"':type==="tel"?'type="tel" dir="ltr"':'type="text"';
     return `<div class="f"><label for="${idA}">${label}</label><input id="${idA}" name="${key}" ${it} value="${esc(v)}" ${req?"required":""}></div>`;
   };
@@ -615,7 +630,7 @@ function openSheet(k,id,prefill,note){
   const linkable=(k==="stock"&&!id&&x.barcode)?data.stock.filter(s=>!s.barcode).sort((a,b)=>String(a.name).localeCompare(String(b.name),"he")):[];
   const linkSel=linkable.length?`<div class="f"><label for="f_link">או: לשייך את הברקוד לפריט שכבר קיים</label><select id="f_link"><option value="">— פריט חדש —</option>${linkable.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join("")}</select></div>`:"";
   const morningBtn=(k==="stock"&&id&&!x.morning_item_id)?`<button class="btn ghost" type="button" data-push>הוספה לרשימת הפריטים ב-Morning</button>`:"";
-  el.innerHTML=`<form id="edit" novalidate><h3>${id?"עריכת ":""}${SCHEMA[k].title}</h3>${note?`<div class="note">${esc(note)}</div>`:""}${linkSel}${F.map(field).join("")}
+  el.innerHTML=`<form id="edit" novalidate><h3>${id?"עריכת ":""}${SCHEMA[k].title}</h3>${note?`<div class="note">${esc(note)}</div>`:""}${linkSel}${renderFields(F,field)}
    ${morningBtn}
    <div class="actions"><button class="btn" type="submit">שמירה</button><button class="btn ghost" type="button" data-close>סגירה</button>
    ${id?`<button class="btn danger" type="button" data-del>מחיקה</button>`:""}</div></form>`;
@@ -699,7 +714,10 @@ async function jobView(m){
 
    <div class="bar"><a class="btn wa" id="waBtn" style="flex:1;text-align:center;text-decoration:none" target="_blank" rel="noopener">שליחה ב-WhatsApp</a></div>
    <div class="bar"><button class="btn ghost" type="button" id="shareReport" style="flex:1">שיתוף אישור ביצוע חתום (תמונה)</button></div>
-   ${waPhone(j.phone)?"":`<div class="note">אין מספר טלפון לעבודה הזו. הוסף אותו ב"פרטים" כדי שההודעה תיפתח ישר בצ'אט של הלקוח.</div>`}`;
+   ${waPhone(j.phone)?"":`<div class="note">אין מספר טלפון לעבודה הזו. הוסף אותו ב"פרטים" כדי שההודעה תיפתח ישר בצ'אט של הלקוח.</div>`}
+   <h4 class="sec">מערכת הקלטה (NVR / DVR)</h4>
+   <div class="pair">${[["nvr_model","דגם"],["nvr_serial","מספר סידורי (S/N)"],["nvr_user","שם משתמש"],["nvr_pass","סיסמה"]].map(([k,l])=>`<div class="f"><label for="j_${k}">${l}</label><input id="j_${k}" data-nvr="${k}" type="text" dir="ltr" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" ${k==="nvr_pass"?'class="secret"':""} value="${esc(j[k]||"")}"></div>`).join("")}</div>
+   <div class="note" style="font-size:12.5px">נשמר אוטומטית. הסיסמה מוסתרת – לחיצה עליה מציגה אותה. הפרטים האלה לא נשלחים ללקוח.</div>`;
   // load images
   const urls=await signed([...photos.map(p=>p.path),j.signature_path].filter(Boolean));
   document.querySelectorAll("#thumbs img[data-path]").forEach(im=>{im.src=fileUrl[im.dataset.path]||""});
@@ -711,6 +729,7 @@ async function jobView(m){
   $("#jDoc").onchange=()=>save({morning_doc_id:$("#jDoc").value||null});
   $("#jPay").onchange=()=>save({pay_link:$("#jPay").value.trim()||null});
   $("#jPhotos").onchange=e=>addPhotos(j,[...e.target.files]);
+  document.querySelectorAll("[data-nvr]").forEach(i=>i.onchange=()=>save({[i.dataset.nvr]:i.value.trim()||null}));
   const updWa=()=>{const a=$("#waBtn");if(!a)return;const ph=waPhone(j.phone);a.href=(ph?`https://wa.me/${ph}`:"https://wa.me/")+"?text="+encodeURIComponent(waText(j))};
   updWa();
 }
