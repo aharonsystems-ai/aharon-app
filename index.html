@@ -110,6 +110,43 @@ nav button[aria-current=page]{color:var(--accent)}
 .secret{-webkit-text-security:disc}
 .secret:focus{-webkit-text-security:none}
 .sheet form .actions{position:sticky;bottom:-1px;background:var(--card);padding:10px 0 calc(8px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);z-index:2}
+/* home dashboard */
+.hero{position:relative;overflow:hidden;border-radius:20px;padding:20px 18px 16px;color:#fff;
+  background:radial-gradient(130% 140% at 100% 0%,#23489c 0%,#0c1d47 55%,#08142f 100%);box-shadow:0 12px 30px rgba(8,20,47,.28)}
+.hero::before{content:"";position:absolute;inset:0;opacity:.5;pointer-events:none;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'%3E%3Cg fill='none' stroke='%237cc4ff' stroke-opacity='.22'%3E%3Cpath d='M10 40h70l30 30h90M10 140h40l30-30h50l40 40M50 210v-40l30-30M170 10v50'/%3E%3C/g%3E%3Cg fill='%237cc4ff' fill-opacity='.4'%3E%3Ccircle cx='10' cy='40' r='2.5'/%3E%3Ccircle cx='200' cy='70' r='2.5'/%3E%3Ccircle cx='130' cy='110' r='2.5'/%3E%3Ccircle cx='50' cy='210' r='2.5'/%3E%3Ccircle cx='170' cy='10' r='2.5'/%3E%3C/g%3E%3C/svg%3E")}
+.hero>*{position:relative}
+.hero .logo{position:absolute;left:14px;top:14px;width:52px;height:52px;border-radius:14px;box-shadow:0 4px 14px rgba(0,0,0,.3)}
+.hero .hi{font:800 27px/1.15 var(--display);margin:0;padding-left:64px}
+.hero .who{font:600 15px var(--display);color:#8fc4f0;margin-top:2px;padding-left:64px}
+.hero .date{font-size:13px;opacity:.78;margin-top:10px}
+.hero .sumline{margin-top:12px;font-size:14px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:9px 12px;line-height:1.45}
+.sechead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.sechead .btn{padding:6px 12px;font-size:13px}
+.trow{display:flex;align-items:center;gap:10px;padding:10px 12px;border-top:1px solid var(--line)}
+.trow:first-child{border-top:0}
+.trow .chk{width:28px;height:28px;flex:none;border-radius:50%;border:2px solid var(--accent);background:none;cursor:pointer;display:grid;place-items:center;color:var(--accent);font:700 14px var(--body);padding:0}
+.trow .chk:active{background:var(--chip)}
+.trow .tb{flex:1;min-width:0;background:none;border:0;padding:2px 0;text-align:right;font:inherit;color:inherit;cursor:pointer;display:grid;gap:1px}
+.trow .tb b{font-weight:700;overflow-wrap:anywhere}
+.trow .tb span{color:var(--muted);font-size:13px}
+.trow.late .tb span{color:var(--bad);font-weight:600}
+.home.anim>*{animation:rise .45s cubic-bezier(.2,.7,.2,1) both}
+.home.anim>*:nth-child(2){animation-delay:.06s}.home.anim>*:nth-child(3){animation-delay:.12s}.home.anim>*:nth-child(4){animation-delay:.18s}.home.anim>*:nth-child(n+5){animation-delay:.24s}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}}
+/* splash */
+#splash{position:fixed;inset:0;z-index:100;display:grid;place-items:center;align-content:center;gap:14px;color:#fff;
+  background:radial-gradient(120% 90% at 50% 35%,#1d3f8c 0%,#0c1d47 55%,#060f26 100%);transition:opacity .4s ease}
+#splash.out{opacity:0;pointer-events:none}
+#splash .ring{position:relative;width:150px;height:150px;display:grid;place-items:center}
+#splash svg{position:absolute;inset:0}
+#splash circle{fill:none;stroke:#3fb3ff;stroke-width:3;stroke-linecap:round;stroke-dasharray:440;stroke-dashoffset:440;animation:draw 1s .1s ease-out forwards;filter:drop-shadow(0 0 6px rgba(63,179,255,.7))}
+#splash img{width:112px;height:112px;border-radius:26px;animation:pop .7s cubic-bezier(.2,1.3,.4,1) both;box-shadow:0 10px 40px rgba(0,0,0,.45)}
+#splash .nm{font:800 24px var(--display);animation:fadeup .5s .45s both}
+#splash .sl{font-size:13px;color:#8fc4f0;animation:fadeup .5s .6s both}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes pop{from{opacity:0;transform:scale(.55) rotate(-8deg)}}
+@keyframes fadeup{from{opacity:0;transform:translateY(8px)}}
+@media (prefers-reduced-motion:reduce){.home.anim>*,#splash *{animation:none!important}#splash circle{stroke-dashoffset:0}}
 .sugg{border:1px solid var(--line);border-radius:10px;background:var(--card);margin-top:4px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.12)}
 .sugg button{display:grid;gap:1px;width:100%;text-align:right;padding:10px 12px;border:0;border-top:1px solid var(--line);background:none;color:inherit;font:inherit;cursor:pointer}
 .sugg button:first-child{border-top:0}
@@ -176,6 +213,7 @@ nav button[aria-current=page]{color:var(--accent)}
 <main id="main"></main>
 <nav id="nav" aria-label="אזורים"></nav>
 </div>
+<div id="splash" hidden><div class="ring"><svg viewBox="0 0 150 150" aria-hidden="true"><circle cx="75" cy="75" r="70" transform="rotate(-90 75 75)"/></svg><img src="icon-512.png" alt=""></div><div class="nm">אהרן מערכות</div><div class="sl">אבטחה ותקשורת בידיים טובות</div></div>
 <div id="sheet" class="sheet" hidden></div>
 <div id="toast" class="toast" hidden role="status"></div>
 
@@ -330,7 +368,11 @@ function newPassword(){
     el.hidden=true;toast("הסיסמה עודכנה");history.replaceState(null,"",location.pathname)};
 }
 function showLogin(){$("#app").hidden=true;$("#login").hidden=false}
-function showApp(){$("#login").hidden=true;$("#app").hidden=false;render();loadAll()}
+let splashShown=false;
+function splash(){if(splashShown)return;splashShown=true;const sp=$("#splash");if(!sp)return;sp.hidden=false;
+  const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  setTimeout(()=>{sp.classList.add("out");setTimeout(()=>{sp.hidden=true;sp.classList.remove("out")},450)},reduce?300:1500)}
+function showApp(){$("#login").hidden=true;$("#app").hidden=false;splash();render();loadAll()}
 const msg=t=>$("#loginMsg").textContent=t;
 const creds=()=>({email:$("#email").value.trim(),password:$("#pass").value});
 $("#loginForm").addEventListener("submit",async e=>{
@@ -424,6 +466,14 @@ function render(){
 function docRow(d){
   return `<a class="row" href="${esc(d.url||"#")}" target="_blank" rel="noopener"><span class="t">${esc(d.client||"")}</span><span class="n">${ils(d.amount)}</span><span class="s">${esc(d.type_name)} ${esc(d.number)} · ${heDate(d.doc_date)}${d.description?" · "+esc(d.description):""}</span><span class="p"><span class="pill ${d.type===10?"":"bad"}">${d.type===10?"הצעה":"פתוחה"}</span></span></a>`;
 }
+let homeAnimated=false;
+function greeting(d=new Date()){const h=d.getHours(),w=d.getDay();
+  if((w===5&&h>=13)||(w===6&&h<18))return "שבת שלום";if(w===6&&h>=18)return "שבוע טוב";
+  if(h>=5&&h<12)return "בוקר טוב";if(h>=12&&h<17)return "צהריים טובים";if(h>=17&&h<21)return "ערב טוב";return "לילה טוב"}
+function heLongDate(d=new Date()){let s=d.toLocaleDateString("he-IL",{weekday:"long",day:"numeric",month:"long"});
+  try{s+=" · "+new Intl.DateTimeFormat("he-IL-u-ca-hebrew",{day:"numeric",month:"long"}).format(d)}catch(e){}return s}
+function taskRow(t){const late=t.date&&t.date<today();const when=t.date?(t.date===today()?"היום":late?"באיחור · "+heDate(t.date):heDate(t.date))+(t.time?" "+t.time:""):"בלי תאריך";
+  return `<div class="trow${late?" late":""}"><button class="chk" type="button" data-taskdone="${esc(t.id)}" aria-label="סימון כבוצע: ${esc(t.title)}"></button><button type="button" class="tb" data-edit="tasks" data-id="${esc(t.id)}"><b>${esc(t.title)}</b><span>${esc([when,t.client].filter(Boolean).join(" · "))}</span></button></div>`}
 function home(){
   const owed=data.jobs.filter(j=>owedOf(j)>0), inv=openInvoices();
   const owedSum=owed.reduce((a,j)=>a+owedOf(j),0)+inv.reduce((a,d)=>a+num(d.amount),0);
@@ -437,7 +487,23 @@ function home(){
   const income=yearJobs.reduce((a,j)=>a+num(j.price),0), profit=yearJobs.reduce((a,j)=>a+profitOf(j),0);
   const expY=data.expenses.filter(x=>(x.date||"").startsWith(y)).reduce((a,x)=>a+num(x.amount),0);
   const quotes=openQuotes(), dueQ=dueQuotes();
-  return `
+  const nowT=tasks.filter(t=>t.date&&t.date<=today()), nextT=tasks.filter(t=>!nowT.includes(t)).slice(0,Math.max(0,5-nowT.length));
+  const todayJobs=data.jobs.filter(j=>j.date===today()), todayProj=data.projects.filter(p=>p.date===today());
+  const bits=[nowT.length?`${nowT.length} ${nowT.length===1?"משימה":"משימות"} להיום`:"",todayJobs.length?`${todayJobs.length===1?"עבודה אחת":todayJobs.length+" עבודות"} בשטח`:"",
+    dueQ.length?`${dueQ.length} ${dueQ.length===1?"הצעה":"הצעות"} לחזור אליהן`:"",low.length?`${low.length} פריטים להזמין`:""].filter(Boolean);
+  const anim=!homeAnimated;homeAnimated=true;
+  return `<div class="home${anim?" anim":""}" style="display:grid;gap:14px">
+  <section class="hero" aria-label="ברוך הבא">
+   <img class="logo" src="icon-192.png" alt="">
+   <h2 class="hi">${greeting()}</h2>
+   <div class="who">אהרן מערכות</div>
+   <div class="date">${esc(heLongDate())}</div>
+   <div class="sumline">${bits.length?"היום: "+bits.join(" · "):"אין משימות פתוחות להיום. יום נקי 👌"}</div>
+  </section>
+  <section><div class="sechead"><h2>המשימות שלי</h2><button class="btn ghost" type="button" data-new="tasks">+ משימה</button></div>
+   <div class="list" style="margin-top:8px">${nowT.concat(nextT).length?nowT.concat(nextT).map(taskRow).join(""):`<div class="empty">אין משימות פתוחות.</div>`}
+   ${tasks.length>nowT.length+nextT.length?`<button class="row" type="button" data-go="tasks" style="justify-items:center"><span class="t" style="color:var(--accent)">כל המשימות (${tasks.length})</span></button>`:""}</div></section>
+  ${todayJobs.length||todayProj.length?`<section><h2>היום בשטח</h2><div class="list" style="margin-top:8px">${todayJobs.map(j=>row("jobs",j)).join("")}${todayProj.map(p=>row("projects",p)).join("")}</div></section>`:""}
   <div class="tiles">
    <button class="tile ${owedSum?'bad':''}" data-go="jobs" data-f="owed"><span>חייבים לי</span><b>${ils(owedSum)}</b><span>${inv.length} חשבוניות + ${owed.length} עבודות</span></button>
    <button class="tile ${debtSum?'warn':''}" data-go="debts"><span>אני חייב</span><b>${ils(debtSum)}</b><span>${open.length} חובות פתוחים</span></button>
@@ -452,10 +518,9 @@ function home(){
    <div class="sum plain"><span>הוצאות ${y}</span><span>${ils(expY)}</span></div>
   </section>
   ${tax.length?`<h2>מיסים וביטוח לאומי</h2><div class="list">${tax.map(d=>row("debts",d)).join("")}</div>`:""}
-  ${tasks.length?`<h2>משימות קרובות</h2><div class="list">${tasks.slice(0,5).map(t=>row("tasks",t)).join("")}</div>`:""}
   ${owed.length?`<h2>עבודות שלא שולמו</h2><div class="list">${owed.sort((a,b)=>owedOf(b)-owedOf(a)).slice(0,6).map(j=>row("jobs",j)).join("")}</div>`:""}
   ${unknown.length?`<div class="note">${unknown.length} עבודות בלי סטטוס תשלום. <a href="#" data-go="jobs" data-f="unknown">לעבור עליהן</a> ולסמן מה שולם.</div>`:""}
-  <div class="bar"><button class="btn ghost" type="button" id="logout">יציאה מהחשבון</button></div>`;
+  <div class="bar"><button class="btn ghost" type="button" id="logout">יציאה מהחשבון</button></div></div>`;
 }
 /* ---------- quotes: follow-up pipeline ---------- */
 const QST=["פתוחה","בטיפול","זכינו","הפסדנו","לא רלוונטי"];
@@ -1225,6 +1290,9 @@ document.addEventListener("click",async e=>{
   if(e.target.closest("#ptCancel")){const p=curP();selPt=null;drawMarkers(p);selBox(p);return}
   if(e.target.closest("#sharePlan")){sharePlan(curP());return}
   if(e.target.closest("#textProj")||e.target.closest("#textProj2")){textSheet(curP());return}
+  const td=e.target.closest("[data-taskdone]");if(td){td.disabled=true;td.textContent="✓";
+    const {error}=await sb.from("tasks").update({done:"בוצע",updated_at:new Date().toISOString()}).eq("id",td.dataset.taskdone);
+    toast(error?"לא נשמר. נסה שוב.":"✔ המשימה בוצעה");await loadAll();return}
   if(e.target.closest("#pickQuote")){e.preventDefault();pickQuote(curP());return}
   if(e.target.closest("#projJob")){jobFromProject(curP(),e.target.closest("#projJob"));return}
   const qd=e.target.closest("[data-quote]");if(qd){openQuote(qd.dataset.quote);return}
