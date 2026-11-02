@@ -17,9 +17,11 @@ Read everything printed on the label. Return ONLY a JSON object with these keys:
  "serial": serial number (S/N) or "",
  "barcode": EAN/UPC digits if printed or "",
  "name_en": short English product name, e.g. "Hikvision 4MP Dome IP Camera 2.8mm",
- "name_he": short natural Hebrew name an Israeli installer would use, e.g. "מצלמת כיפה IP 4MP היקוויז'ן 2.8 מ\\"מ",
+ "name_he": the FULL detailed Hebrew product name, written like the business's own Morning item names: product type, technology and
+   main features, resolution, lens, then "מבית" + brand. Example: "מצלמת אבטחה צינור IP היברידית צבעונית עם IR וצבעוני בלילה עם שמע רזולוציה 4 מגה פיקסל עדשה 2.8 (רחבה) מבית DAHUA".
+   Another: "מערכת הקלטה NVR 8 ערוצים עם 8 יציאות PoE תומך עד 4K מבית Dahua". Up to ~200 characters,
  "category": one of ${JSON.stringify(CATS)},
- "specs": short Hebrew summary of the key specs you can read or reliably know for this exact model (resolution, lens, IR, PoE, channels, ports, voltage), max 160 chars,
+ "specs": extra technical details NOT already in name_he (voltage, IP rating, IR distance, storage, ports), short Hebrew, max 120 chars, or "",
  "morning_item_id": the id of the item from the list below that is the SAME product (same model, or clearly the same item), or null if none is the same,
  "morning_reason": very short Hebrew reason for the match, or "",
  "confidence": "high" | "medium" | "low" (how sure you are about the model reading)}
@@ -92,8 +94,8 @@ Deno.serve(async (req) => {
   const img = String(body.image || "").replace(/^data:image\/\w+;base64,/, "");
   if (img.length < 1000) return json({ok: false, message: "לא התקבלה תמונה"});
   try {
-    const { data: rows } = await sb.from("stock").select("id,name,notes,morning_item_id").not("morning_item_id", "is", null).limit(1000);
-    const items = (rows || []).map((s: any) => `${s.morning_item_id} | ${s.name} | ${String(s.notes || "").replace(/\s+/g, " ").slice(0, 80)}`).join("\n");
+    const { data: rows } = await sb.from("stock").select("id,name,notes,morning_item_id,sku,model").not("morning_item_id", "is", null).limit(1000);
+    const items = (rows || []).map((s: any) => `${s.morning_item_id} | ${s.name}${s.model ? " | דגם " + s.model : ""}${s.sku ? " | מק\"ט " + s.sku : ""}`).join("\n");
     const text = prompt(items);
     const r = aKey ? await claude(aKey, img, text) : await gemini(gKey!, img, text);
     if (r.morning_item_id && !(rows || []).some((s: any) => s.morning_item_id === r.morning_item_id)) r.morning_item_id = null;

@@ -53,16 +53,25 @@ Deno.serve(async (req) => {
         items.push(...list);
         if (!list.length || page >= (d.pages || 1)) break;
       }
-      const { data: existing } = await sb.from("stock").select("id,morning_item_id,name");
+      // Morning often keeps a catalog number in "name" and the real Hebrew text in "description":
+      // the app shows the Hebrew text as the name and keeps the number as sku (מק"ט)
+      const isCode = (n: string) => /^[0-9A-Za-z./ -]{1,14}$/.test(String(n || "").trim());
+      const heb = (t: string) => /[\u0590-\u05FF]/.test(String(t || ""));
+      const view = (it: any) => {
+        const desc = String(it.description || "").replace(/\s+/g, " ").trim();
+        return isCode(it.name) && heb(desc) ? {name: desc, sku: String(it.name).trim(), notes: null} : {name: it.name, sku: null, notes: it.description || null};
+      };
+      const { data: existing } = await sb.from("stock").select("id,morning_item_id,name,sku");
       const byMorning = new Map((existing || []).filter((s: any) => s.morning_item_id).map((s: any) => [s.morning_item_id, s]));
       const byName = new Map((existing || []).filter((s: any) => !s.morning_item_id).map((s: any) => [String(s.name).trim(), s]));
       let added = 0, linked = 0, updated = 0;
       for (const it of items) {
         const hit: any = byMorning.get(it.id);
-        if (hit) { await sb.from("stock").update({name: it.name, sell_price: it.price ?? null}).eq("id", hit.id); updated++; continue; }
-        const same: any = byName.get(String(it.name).trim());
+        const v = view(it);
+        if (hit) { await sb.from("stock").update({name: v.name, sku: v.sku ?? hit.sku ?? null, sell_price: it.price ?? null}).eq("id", hit.id); updated++; continue; }
+        const same: any = byName.get(String(v.name).trim()) || byName.get(String(it.name).trim());
         if (same) { await sb.from("stock").update({morning_item_id: it.id, sell_price: it.price ?? null}).eq("id", same.id); linked++; continue; }
-        await sb.from("stock").insert({name: it.name, notes: it.description || null, sell_price: it.price ?? null, morning_item_id: it.id, qty: 0, min_qty: 0, category: "מ-Morning"});
+        await sb.from("stock").insert({name: v.name, sku: v.sku, notes: v.notes, sell_price: it.price ?? null, morning_item_id: it.id, qty: 0, min_qty: 0, category: "מ-Morning"});
         added++;
       }
       return json({ok: true, message: `${items.length} פריטים ב-Morning · ${added} חדשים · ${linked} קושרו · ${updated} עודכנו`});
@@ -72,12 +81,14 @@ Deno.serve(async (req) => {
       const { data: s } = await sb.from("stock").select("*").eq("id", body.id).single();
       if (!s) return json({ok: false, message: "הפריט לא נמצא"});
       if (s.morning_item_id) return json({ok: true, message: "כבר קיים ב-Morning"});
-      const payload = {name: String(s.name).slice(0, 32), description: [s.brand, s.notes].filter(Boolean).join(" · ").slice(0, 500) || String(s.name),
+      // short catalog name in Morning (sku or model), full Hebrew name as the description
+      const short = String(s.sku || s.model || s.name).slice(0, 32);
+      const payload = {name: short, description: [s.name, s.notes].filter(Boolean).join(" · ").slice(0, 500),
         price: Number(s.sell_price || 0), currency: "ILS"};
       const r = await fetch(API + "/items", {method: "POST", headers: H, body: JSON.stringify(payload)});
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.id) throw new Error("Morning לא קיבל את הפריט (" + r.status + ")");
-      await sb.from("stock").update({morning_item_id: d.id}).eq("id", s.id);
+      await sb.from("stock").update({morning_item_id: d.id, sku: s.sku || short}).eq("id", s.id);
       return json({ok: true, message: "נוסף לרשימת הפריטים ב-Morning"});
     }
     return json({ok: false, message: "פעולה לא מוכרת"}, 400);

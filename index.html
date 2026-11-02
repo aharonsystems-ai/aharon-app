@@ -205,9 +205,13 @@ const SCHEMA={
   ["receipt","הוצאה קבלה?","select",0,["","כן","לא"],"half"],["notes","הערות","textarea"],
   ["nvr_model","דגם","ltr",0,null,"half","מערכת הקלטה (NVR / DVR)"],["nvr_serial","מספר סידורי (S/N)","ltr",0,null,"half"],
   ["nvr_user","שם משתמש","ltr",0,null,"half"],["nvr_pass","סיסמה","secret",0,null,"half"]]},
- stock:{title:"פריט מלאי",fields:[["name","שם בעברית","text",1],["name_en","שם באנגלית / כמו על המדבקה","text"],["model","דגם","text"],["category","קטגוריה","select",0,["","מצלמות","מקליטים","תקשורת","כבלים","אביזרים","אזעקה","אינטרקום","בקרת כניסה","אודיו","מגברי קליטה","מ-Morning","אחר"]],
-  ["qty","כמות במלאי","num"],["min_qty","התראה מתחת ל־","num"],["brand","יצרן","text"],["barcode","ברקוד","text"],["serials","מספרים סידוריים (S/N)","textarea"],
-  ["unit_cost","מחיר קנייה ליחידה ₪","num"],["sell_price","מחיר מכירה ₪","num"],["supplier","ספק","text"],["notes","הערות","textarea"]]},
+ stock:{title:"פריט מלאי",fields:[["name","שם המוצר (בעברית, עם כל הפירוט)","textarea",1],
+  ["category","קטגוריה","select",0,["","מצלמות","מקליטים","תקשורת","כבלים","אביזרים","אזעקה","אינטרקום","בקרת כניסה","אודיו","מגברי קליטה","מ-Morning","אחר"],"half"],["brand","יצרן","text",0,null,"half"],
+  ["model","דגם","ltr",0,null,"half"],["sku","מק\"ט (Morning)","ltr",0,null,"half"],
+  ["qty","כמות במלאי","num"],["min_qty","התראה מתחת ל־","num",0,null,"half"],["barcode","ברקוד","ltr",0,null,"half"],
+  ["unit_cost","מחיר קנייה ₪","num",0,null,"half"],["sell_price","מחיר מכירה ₪","num",0,null,"half"],
+  ["supplier","ספק","text",0,null,"half"],["name_en","שם באנגלית","text",0,null,"half"],
+  ["serials","מספרים סידוריים (S/N)","textarea"],["notes","פרטים נוספים","textarea"]]},
  projects:{title:"פרויקט",fields:[["name","שם הפרויקט","text",1],["client","לקוח","text"],["address","כתובת","text"],
   ["date","תאריך ביצוע / ביקור","date",0,null,"half"],["time","שעה","time",0,null,"half"],
   ["status","סטטוס","select",0,["תכנון","הצעת מחיר","בביצוע","הסתיים"]],["notes","הערות","textarea"]]},
@@ -560,7 +564,7 @@ function row(k,x){
   let t="",s="",n="",p="";
   if(k==="jobs"){const o=owedOf(x);t=x.client||"ללא שם";s=[x.place,x.work].filter(Boolean).join(" · ")+(x.date?` · ${heDate(x.date)}`:"");n=x.price?ils(x.price):"";
     p=o>0?`<span class="pill bad">חייב ${ils(o)}</span>`:x.paid==="כן"?`<span class="pill good">שולם</span>`:`<span class="pill warn">לא ידוע</span>`}
-  if(k==="stock"){const lowv=num(x.min_qty)>0&&num(x.qty)<=num(x.min_qty);t=x.name;s=[x.category,x.brand,x.model,x.sell_price?"מכירה "+ils(x.sell_price):"",x.barcode?"ברקוד ✓":""].filter(Boolean).join(" · ");n=`${num(x.qty)} יח׳`;
+  if(k==="stock"){const lowv=num(x.min_qty)>0&&num(x.qty)<=num(x.min_qty);t=x.name;s=[x.category,x.brand,x.model,x.sku?'מק"ט '+x.sku:"",x.sell_price?"מכירה "+ils(x.sell_price):"",x.barcode?"ברקוד ✓":""].filter(Boolean).join(" · ");n=`${num(x.qty)} יח׳`;
     p=(lowv?`<span class="pill bad">להזמין</span> `:"")+(x.morning_item_id?`<span class="pill">Morning</span>`:"")}
   if(k==="projects"){const pts=x.points||[];t=x.name;s=[x.client,x.address].filter(Boolean).join(" · ");n="";
     p=`<span class="pill ${x.status==="הסתיים"?"good":""}">${esc(x.status||"תכנון")}</span> <span class="pill">${pts.length} סימונים</span>${x.quote_doc_id?' <span class="pill">הצעה</span>':""}${x.job_id?' <span class="pill good">עבודה</span>':""}`}
@@ -994,6 +998,7 @@ function applyLabel(it){
     const f=$("#edit");if(!f)return;const E=f.elements;
     const set=(k,v)=>{if(E[k]&&v&&!String(E[k].value).trim())E[k].value=v};
     set("model",it.model);set("brand",it.brand);set("name_en",it.name_en);set("barcode",it.barcode);set("notes",it.specs);
+    if(E.name&&it.name_he&&!/[\u0590-\u05FF]/.test(E.name.value)){if(E.sku&&!E.sku.value&&/^[0-9A-Za-z./ -]{1,14}$/.test(E.name.value.trim()))E.sku.value=E.name.value.trim();E.name.value=it.name_he}
     if(E.category&&it.category&&(!E.category.value||E.category.value==="מ-Morning"))E.category.value=it.category;
     if(it.serial&&E.serials&&!E.serials.value.includes(it.serial))E.serials.value=[E.serials.value.trim(),it.serial].filter(Boolean).join("\n");
     if(E.qty)E.qty.value=num(E.qty.value)+1;
