@@ -27,3 +27,9 @@ alter table public.jobs add column if not exists nvr_model text;
 alter table public.jobs add column if not exists nvr_serial text;
 alter table public.jobs add column if not exists nvr_user text;
 alter table public.jobs add column if not exists nvr_pass text;
+
+-- Times + project date for the Google Calendar sync (run 2026-11-02)
+alter table public.tasks add column if not exists time text;
+alter table public.jobs add column if not exists time text;
+alter table public.projects add column if not exists date date;
+alter table public.projects add column if not exists time text;

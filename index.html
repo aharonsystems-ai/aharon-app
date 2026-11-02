@@ -200,7 +200,7 @@ const EXP_CATS=["ציוד","כלי עבודה","דלק ורכב","ביטוח ל�
 const SCHEMA={
  jobs:{title:"עבודה",fields:[
   ["client","שם לקוח","text",1],["phone","טלפון","tel",0,null,"half"],["place","עסק / מיקום","text",0,null,"half"],["address","כתובת","text"],
-  ["work","פרטי עבודה","textarea"],["date","תאריך עבודה","date",0,null,"half"],["price","מחיר גבייה ₪","num",0,null,"half"],["cost","עלויות ₪","num",0,null,"half"],
+  ["work","פרטי עבודה","textarea"],["date","תאריך עבודה","date",0,null,"half"],["time","שעה","time",0,null,"half"],["price","מחיר גבייה ₪","num",0,null,"half"],["cost","עלויות ₪","num",0,null,"half"],
   ["profit","רווח בפועל ₪","num",0,null,"half"],["paid","שולם?","select",0,["לא ידוע","כן","לא","חלקי"],"half"],["paid_amount","כמה שולם (חלקי) ₪","num",0,null,"half"],
   ["receipt","הוצאה קבלה?","select",0,["","כן","לא"],"half"],["notes","הערות","textarea"],
   ["nvr_model","דגם","ltr",0,null,"half","מערכת הקלטה (NVR / DVR)"],["nvr_serial","מספר סידורי (S/N)","ltr",0,null,"half"],
@@ -209,8 +209,9 @@ const SCHEMA={
   ["qty","כמות במלאי","num"],["min_qty","התראה מתחת ל־","num"],["brand","יצרן","text"],["barcode","ברקוד","text"],["serials","מספרים סידוריים (S/N)","textarea"],
   ["unit_cost","מחיר קנייה ליחידה ₪","num"],["sell_price","מחיר מכירה ₪","num"],["supplier","ספק","text"],["notes","הערות","textarea"]]},
  projects:{title:"פרויקט",fields:[["name","שם הפרויקט","text",1],["client","לקוח","text"],["address","כתובת","text"],
+  ["date","תאריך ביצוע / ביקור","date",0,null,"half"],["time","שעה","time",0,null,"half"],
   ["status","סטטוס","select",0,["תכנון","הצעת מחיר","בביצוע","הסתיים"]],["notes","הערות","textarea"]]},
- tasks:{title:"משימה",fields:[["title","מה צריך לעשות","text",1],["client","לקוח","text"],["date","תאריך","date"],
+ tasks:{title:"משימה",fields:[["title","מה צריך לעשות","text",1],["client","לקוח","text"],["date","תאריך","date",0,null,"half"],["time","שעה","time",0,null,"half"],
   ["done","סטטוס","select",0,["פתוח","בוצע"]],["notes","הערות","textarea"]]},
  debts:{title:"חוב",fields:[["name","למי","text",1],["cat","סוג","select",0,DEBT_CATS],["amount","סכום ₪","num"],["due","תאריך תשלום","date"],
   ["monthly","החזר חודשי ₪","num"],["paid","סטטוס","select",0,["פתוח","שולם"]],["notes","הערות","textarea"]]},
@@ -563,7 +564,7 @@ function row(k,x){
     p=(lowv?`<span class="pill bad">להזמין</span> `:"")+(x.morning_item_id?`<span class="pill">Morning</span>`:"")}
   if(k==="projects"){const pts=x.points||[];t=x.name;s=[x.client,x.address].filter(Boolean).join(" · ");n="";
     p=`<span class="pill ${x.status==="הסתיים"?"good":""}">${esc(x.status||"תכנון")}</span> <span class="pill">${pts.length} סימונים</span>${x.quote_doc_id?' <span class="pill">הצעה</span>':""}${x.job_id?' <span class="pill good">עבודה</span>':""}`}
-  if(k==="tasks"){const late=x.done!=="בוצע"&&x.date&&x.date<today();t=x.title;s=[x.client,x.date?heDate(x.date):""].filter(Boolean).join(" · ");p=x.done==="בוצע"?`<span class="pill good">בוצע</span>`:late?`<span class="pill bad">באיחור</span>`:`<span class="pill">פתוח</span>`}
+  if(k==="tasks"){const late=x.done!=="בוצע"&&x.date&&x.date<today();t=x.title;s=[x.client,x.date?heDate(x.date)+(x.time?" "+x.time:""):""].filter(Boolean).join(" · ");p=x.done==="בוצע"?`<span class="pill good">בוצע</span>`:late?`<span class="pill bad">באיחור</span>`:`<span class="pill">פתוח</span>`}
   if(k==="debts"){t=x.name;s=[x.cat,x.due?"לתשלום "+heDate(x.due):"",x.monthly?ils(x.monthly)+" לחודש":""].filter(Boolean).join(" · ");n=x.amount?ils(x.amount):"—";p=x.paid==="שולם"?`<span class="pill good">שולם</span>`:(x.amount?"":`<span class="pill warn">חסר סכום</span>`)}
   if(k==="expenses"){t=x.vendor||x.cat;s=[x.cat,x.for_job,x.date?heDate(x.date):""].filter(Boolean).join(" · ");n=x.amount?ils(x.amount):"";p=x.vat?`<span class="pill">מע״מ ${ils(x.vat)}</span>`:""}
   if(k==="jobs"){const ic=[(x.photos||[]).length?`📷${(x.photos||[]).length}`:"",x.signature_path?"✍️":""].filter(Boolean).join(" ");
@@ -617,13 +618,13 @@ function openSheet(k,id,prefill,note){
   const x=id?data[k].find(d=>d.id===id):Object.assign({},prefill||{}); if(!x)return;
   const F=SCHEMA[k].fields;
   const field=([key,label,type,req,opts])=>{
-    let v=x[key]??(key==="date"&&!id?today():"");
+    let v=x[key]??(key==="date"&&!id&&k!=="projects"?today():"");
     const idA=`f_${key}`;
     if(k==="stock"&&key==="qty")return `<div class="f"><label for="${idA}">${label}</label><div class="qtyrow"><button type="button" data-q="-1" aria-label="פחות">−</button><input id="${idA}" name="${key}" type="number" inputmode="decimal" step="any" value="${esc(v)}"><button type="button" data-q="1" aria-label="יותר">+</button></div></div>`;
     if(type==="select")return `<div class="f"><label for="${idA}">${label}</label><select id="${idA}" name="${key}">${opts.map(o=>`<option ${o===v?"selected":""}>${esc(o)}</option>`).join("")}</select></div>`;
     if(type==="textarea")return `<div class="f"><label for="${idA}">${label}</label><textarea id="${idA}" name="${key}">${esc(v)}</textarea></div>`;
     if(type==="ltr"||type==="secret")return `<div class="f"><label for="${idA}">${label}</label><input id="${idA}" name="${key}" type="text" dir="ltr" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" ${type==="secret"?'class="secret"':""} value="${esc(v)}"></div>`;
-    const it=type==="num"?'type="number" inputmode="decimal" step="any"':type==="date"?'type="date"':type==="tel"?'type="tel" dir="ltr"':'type="text"';
+    const it=type==="num"?'type="number" inputmode="decimal" step="any"':type==="date"?'type="date"':type==="time"?'type="time"':type==="tel"?'type="tel" dir="ltr"':'type="text"';
     return `<div class="f"><label for="${idA}">${label}</label><input id="${idA}" name="${key}" ${it} value="${esc(v)}" ${req?"required":""}></div>`;
   };
   const el=$("#sheet");
@@ -651,7 +652,7 @@ function openSheet(k,id,prefill,note){
     e.preventDefault();
     const body={};
     for(const [key,label,type,req] of F){let v=form.elements[key].value.trim();if(req&&!v){form.elements[key].focus();toast("צריך למלא: "+label);return}
-      if(type==="num")v=v===""?null:Number(v);else if(type==="date")v=v||null;body[key]=v}
+      if(type==="num")v=v===""?null:Number(v);else if(type==="date"||type==="time")v=v||null;body[key]=v}
     body.updated_at=new Date().toISOString();
     const btn=form.querySelector("[type=submit]");btn.disabled=true;
     const link=form.querySelector("#f_link")?.value;
