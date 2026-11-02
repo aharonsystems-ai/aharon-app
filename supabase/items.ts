@@ -77,6 +77,27 @@ Deno.serve(async (req) => {
       return json({ok: true, message: `${items.length} פריטים ב-Morning · ${added} חדשים · ${linked} קושרו · ${updated} עודכנו`});
     }
 
+    if (body.action === "docitems") {
+      // line items of the documents this business issued (invoices / receipts-invoices / quotes), grouped per product
+      const { data: docs } = await sb.from("morning_docs").select("id,type,number,doc_date,client").in("type", [10, 300, 305, 320]);
+      const agg: Record<string, any> = {};
+      let n = 0, failed = 0;
+      for (const d of docs || []) {
+        const r = await fetch(API + "/documents/" + d.id, {headers: H});
+        if (!r.ok) { failed++; continue; }
+        const doc = await r.json(); n++;
+        for (const it of doc.income || []) {
+          const desc = String(it.description || "").replace(/\s+/g, " ").trim();
+          const key = it.itemId || it.catalogNum || desc;
+          if (!key) continue;
+          const a = agg[key] ||= {itemId: it.itemId || null, catalogNum: it.catalogNum || null, description: desc, count: 0, qty: 0, prices: [], docs: []};
+          a.count++; a.qty += Number(it.quantity || 0); a.prices.push(Number(it.price || 0));
+          if (a.docs.length < 4) a.docs.push(`${d.type === 10 ? "הצעה" : "חשבונית"} ${d.number}`);
+        }
+      }
+      return json({ok: true, docs: n, failed, items: Object.values(agg)});
+    }
+
     if (body.action === "push") {
       const { data: s } = await sb.from("stock").select("*").eq("id", body.id).single();
       if (!s) return json({ok: false, message: "הפריט לא נמצא"});
