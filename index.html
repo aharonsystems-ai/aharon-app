@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <title>אהרן מערכות · ניהול</title>
 <meta name="robots" content="noindex,nofollow">
 <meta name="theme-color" content="#0c1d47">
@@ -30,6 +30,9 @@
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html,body{margin:0}
+/* no double-tap zoom (fast taps on + / −), and no auto-zoom when typing: iOS zooms into fields under 16px */
+html,body,button,a,label,input,select,textarea{touch-action:manipulation}
+input,select,textarea{font-size:16px!important}
 body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--body);-webkit-tap-highlight-color:transparent;min-height:100vh}
 .top{position:sticky;top:0;z-index:5;background:var(--navy);color:#fff;
   padding:calc(10px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));
