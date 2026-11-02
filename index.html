@@ -101,6 +101,10 @@ nav button[aria-current=page]{color:var(--accent)}
 .scan .hint{position:absolute;top:calc(20px + env(safe-area-inset-top,0px));left:0;right:0;text-align:center;color:#fff;font-weight:700;text-shadow:0 1px 3px #000}
 .qtyrow{display:flex;gap:8px;align-items:center}
 .qtyrow input{flex:1}
+.sugg{border:1px solid var(--line);border-radius:10px;background:var(--card);margin-top:4px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.12)}
+.sugg button{display:grid;gap:1px;width:100%;text-align:right;padding:10px 12px;border:0;border-top:1px solid var(--line);background:none;color:inherit;font:inherit;cursor:pointer}
+.sugg button:first-child{border-top:0}
+.sugg span{color:var(--muted);font-size:13px}
 .qtyrow button{width:48px;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--chip);color:var(--fg);font:700 20px var(--body);cursor:pointer}
 .plan{position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;touch-action:manipulation}
 .plan img{display:block;width:100%;height:auto;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
@@ -560,6 +564,40 @@ function row(k,x){
   return `<button type="button" class="row" data-edit="${k}" data-id="${esc(x.id)}"><span class="t">${esc(t)}</span><span class="n">${n}</span><span class="s">${esc(s)}</span><span class="p">${p}</span></button>`;
 }
 
+/* ---------- clients: autocomplete + keep details in sync by name ---------- */
+const normName=s=>String(s||"").trim().replace(/\s+/g," ");
+const CLIENT_F=["phone","place","address"];
+function clientIndex(){
+  const m=new Map(),get=n=>{if(!m.has(n))m.set(n,{name:n,jobs:0});return m.get(n)};
+  data.jobs.slice().sort((a,b)=>String(a.date||a.created_at||"").localeCompare(String(b.date||b.created_at||""))).forEach(j=>{const n=normName(j.client);if(!n)return;const c=get(n);c.jobs++;CLIENT_F.forEach(f=>{if(j[f])c[f]=j[f]})});
+  data.morning_docs.forEach(d=>{const n=normName(d.client);if(!n)return;const c=get(n);if(!c.phone&&d.client_phone)c.phone=d.client_phone});
+  data.projects.forEach(p=>{const n=normName(p.client);if(!n)return;const c=get(n);if(!c.address&&p.address)c.address=p.address});
+  return [...m.values()];
+}
+function clientAuto(inp,form){
+  const box=document.createElement("div");box.className="sugg";box.hidden=true;inp.after(box);inp.setAttribute("autocomplete","off");
+  const all=clientIndex();let hits=[];
+  const show=()=>{const t=normName(inp.value);if(!t){box.hidden=true;return}
+    hits=all.filter(c=>c.name.includes(t)).sort((a,b)=>(b.name.startsWith(t))-(a.name.startsWith(t))||b.jobs-a.jobs).slice(0,6);
+    if(!hits.length){box.hidden=true;return}
+    box.innerHTML=hits.map((c,i)=>`<button type="button" data-ci="${i}"><b>${esc(c.name)}</b><span>${esc([c.phone,c.place,c.address].filter(Boolean).join(" · ")||"בלי פרטים")}${c.jobs?` · ${c.jobs} עבודות`:""}</span></button>`).join("");box.hidden=false};
+  inp.addEventListener("input",show);
+  inp.addEventListener("blur",()=>setTimeout(()=>box.hidden=true,250));
+  box.addEventListener("mousedown",e=>e.preventDefault());
+  box.addEventListener("click",e=>{const b=e.target.closest("[data-ci]");if(!b)return;const c=hits[+b.dataset.ci];inp.value=c.name;box.hidden=true;
+    let filled=0;CLIENT_F.forEach(f=>{const el=form.elements[f];if(el&&c[f]&&el.value!==c[f]){el.value=c[f];filled++}});
+    toast(filled?"פרטי הלקוח מולאו":"הלקוח נבחר")});
+}
+async function syncClient(saved,before,isNew){
+  const n=normName(saved.client);if(!n)return 0;
+  const fields=isNew?["phone","place"]:CLIENT_F;
+  const changed=fields.filter(f=>saved[f]&&saved[f]!==(before[f]||""));if(!changed.length)return 0;
+  const others=data.jobs.filter(j=>j.id!==saved.id&&normName(j.client)===n&&changed.some(f=>(j[f]||"")!==saved[f]));if(!others.length)return 0;
+  const patch={updated_at:new Date().toISOString()};changed.forEach(f=>patch[f]=saved[f]);
+  const {error}=await sb.from("jobs").update(patch).in("id",others.map(j=>j.id));
+  return error?0:others.length;
+}
+
 /* ---------- edit sheet ---------- */
 function openSheet(k,id,prefill,note){
   const x=id?data[k].find(d=>d.id===id):Object.assign({},prefill||{}); if(!x)return;
@@ -583,6 +621,7 @@ function openSheet(k,id,prefill,note){
    ${id?`<button class="btn danger" type="button" data-del>מחיקה</button>`:""}</div></form>`;
   el.hidden=false;
   const form=$("#edit");
+  if(form.elements.client&&["jobs","projects","tasks"].includes(k))clientAuto(form.elements.client,form);
   el.onclick=async e=>{
     if(e.target===el||e.target.closest("[data-close]")){el.hidden=true;return}
     const qb=e.target.closest("[data-q]");if(qb){const i=form.elements.qty;i.value=Math.max(0,num(i.value)+Number(qb.dataset.q));return}
@@ -606,7 +645,9 @@ function openSheet(k,id,prefill,note){
     else res=id?await sb.from(k).update(body).eq("id",id).select().single():await sb.from(k).insert(body).select().single();
     btn.disabled=false;
     if(res.error){toast("השמירה נכשלה. נסה שוב.");return}
-    toast("נשמר");el.hidden=true;await loadAll();
+    let extra="";
+    if(k==="jobs"&&!link&&res.data){const nUp=await syncClient(res.data,id?x:{},!id);if(nUp)extra=` · עודכן גם ב־${nUp} עבודות של ${normName(res.data.client)}`}
+    toast("נשמר"+extra);el.hidden=true;await loadAll();
     if(k==="projects"&&!id&&res.data){curProject=res.data.id;render()}
     if(k==="jobs"&&!id&&res.data){curJob=res.data.id;render()}
   };
