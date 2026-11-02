@@ -204,7 +204,8 @@ const SCHEMA={
   ["profit","רווח בפועל ₪","num",0,null,"half"],["paid","שולם?","select",0,["לא ידוע","כן","לא","חלקי"],"half"],["paid_amount","כמה שולם (חלקי) ₪","num",0,null,"half"],
   ["receipt","הוצאה קבלה?","select",0,["","כן","לא"],"half"],["notes","הערות","textarea"],
   ["nvr_model","דגם","ltr",0,null,"half","מערכת הקלטה (NVR / DVR)"],["nvr_serial","מספר סידורי (S/N)","ltr",0,null,"half"],
-  ["nvr_user","שם משתמש","ltr",0,null,"half"],["nvr_pass","סיסמה","secret",0,null,"half"]]},
+  ["nvr_user","שם משתמש","ltr",0,null,"half"],["nvr_pass","סיסמה","secret",0,null,"half"],
+  ["nvr_code","קוד מצלמות","secret",0,null,"half"],["nvr_ip","IP קבוע","ltr",0,null,"half"],["nvr_qr","QR / P2P","ltr"]]},
  stock:{title:"פריט מלאי",fields:[["name","שם המוצר (בעברית, עם כל הפירוט)","textarea",1],
   ["category","קטגוריה","select",0,["","מצלמות","מקליטים","תקשורת","כבלים","אביזרים","אזעקה","אינטרקום","בקרת כניסה","אודיו","מגברי קליטה","מ-Morning","אחר"],"half"],["brand","יצרן","text",0,null,"half"],
   ["model","דגם","ltr",0,null,"half"],["sku","מק\"ט (Morning)","ltr",0,null,"half"],
@@ -721,8 +722,8 @@ async function jobView(m){
    <div class="bar"><button class="btn ghost" type="button" id="shareReport" style="flex:1">שיתוף אישור ביצוע חתום (תמונה)</button></div>
    ${waPhone(j.phone)?"":`<div class="note">אין מספר טלפון לעבודה הזו. הוסף אותו ב"פרטים" כדי שההודעה תיפתח ישר בצ'אט של הלקוח.</div>`}
    <h4 class="sec">מערכת הקלטה (NVR / DVR)</h4>
-   <div class="pair">${[["nvr_model","דגם"],["nvr_serial","מספר סידורי (S/N)"],["nvr_user","שם משתמש"],["nvr_pass","סיסמה"]].map(([k,l])=>`<div class="f"><label for="j_${k}">${l}</label><input id="j_${k}" data-nvr="${k}" type="text" dir="ltr" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" ${k==="nvr_pass"?'class="secret"':""} value="${esc(j[k]||"")}"></div>`).join("")}</div>
-   <div class="note" style="font-size:12.5px">נשמר אוטומטית. הסיסמה מוסתרת – לחיצה עליה מציגה אותה. הפרטים האלה לא נשלחים ללקוח.</div>`;
+   <div class="pair">${[["nvr_model","דגם"],["nvr_serial","מספר סידורי (S/N)"],["nvr_user","שם משתמש"],["nvr_pass","סיסמה"],["nvr_code","קוד מצלמות"],["nvr_ip","IP קבוע"],["nvr_qr","QR / P2P"]].map(([k,l])=>`<div class="f"><label for="j_${k}">${l}</label><input id="j_${k}" data-nvr="${k}" type="text" dir="ltr" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" ${k==="nvr_pass"||k==="nvr_code"?'class="secret"':""} value="${esc(j[k]||"")}"></div>`).join("")}</div>
+   <div class="note" style="font-size:12.5px">נשמר אוטומטית. הסיסמה וקוד המצלמות מוסתרים – לחיצה מציגה אותם. הפרטים האלה לא נשלחים ללקוח.</div>`;
   // load images
   const urls=await signed([...photos.map(p=>p.path),j.signature_path].filter(Boolean));
   document.querySelectorAll("#thumbs img[data-path]").forEach(im=>{im.src=fileUrl[im.dataset.path]||""});

@@ -23,6 +23,38 @@ Deno.serve(async (req) => {
   if (!key) { try { key = Object.values(JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") || "{}"))[0] as string; } catch (_) { /* none */ } }
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, key);
 
+  // one-off import of recorder logins from the Google Sheet "לקוחות" (sent by the sheet's Apps Script).
+  // Matches each sheet row to exactly one job (client + date, or client alone when unique). Never overwrites a value.
+  if (req.method === "POST") {
+    const body = await req.json().catch(() => ({}));
+    if (body.action === "nvr") {
+      const norm = (v: unknown) => String(v ?? "").replace(/[\s\u200f\u200e]+/g, " ").trim();
+      const toIso = (v: string) => { const m = norm(v).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : null; };
+      const { data: jobs, error } = await sb.from("jobs").select("id,client,place,date,nvr_user,nvr_pass,nvr_code,nvr_ip,nvr_qr");
+      if (error) return json({ok: false, message: error.message}, 500);
+      const F: Record<string, string> = {user: "nvr_user", pass: "nvr_pass", code: "nvr_code", ip: "nvr_ip", qr: "nvr_qr"};
+      const report: unknown[] = [];
+      for (const row of body.rows || []) {
+        const c = norm(row.client), d = toIso(row.date);
+        let cand = (jobs || []).filter((j: any) => norm(j.client) === c && (d ? j.date === d : true));
+        if (!d && cand.length > 1) cand = cand.filter((j: any) => !j.date);
+        if (cand.length > 1 && row.place) cand = cand.filter((j: any) => norm(j.place).includes(norm(row.place)));
+        if (cand.length !== 1) { report.push({row: row.row, client: c, date: d, result: cand.length ? "יותר מעבודה אחת" : "לא נמצאה עבודה"}); continue; }
+        const j: any = cand[0], patch: Record<string, string> = {}, conflict: string[] = [];
+        for (const [k, col] of Object.entries(F)) {
+          const v = String(row[k] ?? "").trim(); if (!v) continue; // values exactly as typed in the sheet
+          if (!j[col]) patch[col] = v; else if (String(j[col]).trim() !== v) conflict.push(col);
+        }
+        if (!body.dry && Object.keys(patch).length) {
+          const { error: e2 } = await sb.from("jobs").update({...patch, updated_at: new Date().toISOString()}).eq("id", j.id);
+          if (e2) { report.push({row: row.row, client: c, date: d, result: "שגיאה: " + e2.message}); continue; }
+        }
+        report.push({row: row.row, client: c, date: d, job: j.id, place: j.place, fields: Object.keys(patch), conflict});
+      }
+      return json({ok: true, dry: !!body.dry, report});
+    }
+  }
+
   const now = Date.now();
   const from = ymd(new Date(now - 60 * 864e5)), to = ymd(new Date(now + 365 * 864e5));
   const [t, j, p] = await Promise.all([

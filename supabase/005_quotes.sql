@@ -33,3 +33,9 @@ alter table public.tasks add column if not exists time text;
 alter table public.jobs add column if not exists time text;
 alter table public.projects add column if not exists date date;
 alter table public.projects add column if not exists time text;
+
+-- Stock sku + recorder code/IP/QR (run 2026-11-02)
+alter table public.stock add column if not exists sku text;
+alter table public.jobs add column if not exists nvr_code text;
+alter table public.jobs add column if not exists nvr_ip text;
+alter table public.jobs add column if not exists nvr_qr text;
