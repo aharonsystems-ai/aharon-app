@@ -237,6 +237,10 @@ const ils=n=>"₪"+Math.round(num(n)).toLocaleString("he-IL");
 const today=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
 const heDate=d=>{if(!d)return"";const [y,m,dd]=String(d).slice(0,10).split("-");return `${+dd}/${+m}/${y.slice(2)}`};
 function toast(t){const el=$("#toast");el.textContent=t;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,2600)}
+/* job is "done" when it is paid and its date has arrived; warranty = one year from the job date */
+const jobDone=j=>j.paid==="כן"&&(!j.date||j.date<=today());
+const warrantyEnd=j=>{if(!j.date)return null;const d=new Date(j.date+"T12:00:00Z");d.setUTCFullYear(d.getUTCFullYear()+1);return d.toISOString().slice(0,10)};
+const warrantyOf=j=>{const e=warrantyEnd(j);if(!e||j.date>today())return "";return e>=today()?"on":"off"};
 function owedOf(j){if(j.paid==="לא")return Math.max(0,num(j.price)-num(j.paid_amount));if(j.paid==="חלקי")return Math.max(0,num(j.price)-num(j.paid_amount));return 0}
 function profitOf(j){if(j.profit!==null&&j.profit!==undefined)return num(j.profit);if(j.cost!==null&&j.cost!==undefined)return num(j.price)-num(j.cost);return 0}
 const openInvoices=()=>data.morning_docs.filter(d=>(d.type===300||d.type===305)&&d.status===0);
@@ -540,7 +544,7 @@ function openQuote(id){
   };
 }
 const FILTERS={
- jobs:[["all","הכל"],["owed","חייבים"],["unknown","לא ידוע"],["paid","שולם"]],
+ jobs:[["all","הכל"],["owed","חייבים"],["done","בוצע"],["warranty","באחריות"],["expired","אחריות הסתיימה"],["unknown","תשלום לא ידוע"]],
  stock:[["all","הכל"],["have","יש במלאי"],["low","חסר"],["morning","מ-Morning"]],
  projects:[["active","פעילים"],["done","הסתיימו"],["all","הכל"]],
  tasks:[["open","פתוח"],["done","בוצע"],["all","הכל"]],
@@ -551,7 +555,8 @@ function pass(k,x){
   const f=filt[k]||FILTERS[k][0][0];
   if(q){const s=Object.values(x).join(" ");if(!s.includes(q))return false}
   switch(k+":"+f){
-   case "jobs:owed":return owedOf(x)>0; case "jobs:unknown":return !x.paid||x.paid==="לא ידוע"; case "jobs:paid":return x.paid==="כן";
+   case "jobs:owed":return owedOf(x)>0; case "jobs:unknown":return !x.paid||x.paid==="לא ידוע"; case "jobs:paid":case "jobs:done":return jobDone(x);
+   case "jobs:warranty":return warrantyOf(x)==="on"; case "jobs:expired":return warrantyOf(x)==="off";
    case "stock:low":return num(x.min_qty)>0&&num(x.qty)<=num(x.min_qty);
    case "stock:have":return num(x.qty)>0; case "stock:morning":return !!x.morning_item_id;
    case "projects:active":return x.status!=="הסתיים"; case "projects:done":return x.status==="הסתיים";
@@ -601,8 +606,9 @@ function listBody(k){
 }
 function row(k,x){
   let t="",s="",n="",p="";
-  if(k==="jobs"){const o=owedOf(x);t=x.client||"ללא שם";s=[x.place,x.work].filter(Boolean).join(" · ")+(x.date?` · ${heDate(x.date)}`:"");n=x.price?ils(x.price):"";
-    p=o>0?`<span class="pill bad">חייב ${ils(o)}</span>`:x.paid==="כן"?`<span class="pill good">שולם</span>`:`<span class="pill warn">לא ידוע</span>`}
+  if(k==="jobs"){const o=owedOf(x);t=x.client||"ללא שם";s=[x.place,x.work,x.date?heDate(x.date):""].filter(Boolean).join(" · ");n=x.price?ils(x.price):"";
+    p=o>0?`<span class="pill bad">חייב ${ils(o)}</span>`:jobDone(x)?`<span class="pill good">בוצע</span>`:x.paid==="כן"?`<span class="pill good">שולם</span>`:`<span class="pill warn">תשלום לא ידוע</span>`;
+    const w=warrantyOf(x);if(w)s=(s?s+" · ":"")+(w==="on"?`באחריות עד ${heDate(warrantyEnd(x))}`:"אחריות הסתיימה")}
   if(k==="stock"){const lowv=num(x.min_qty)>0&&num(x.qty)<=num(x.min_qty);t=x.name;s=[x.category,x.brand,x.model,x.sku?'מק"ט '+x.sku:"",x.sell_price?"מכירה "+ils(x.sell_price):"",x.barcode?"ברקוד ✓":""].filter(Boolean).join(" · ");n=`${num(x.qty)} יח׳`;
     p=(lowv?`<span class="pill bad">להזמין</span> `:"")+(x.morning_item_id?`<span class="pill">Morning</span>`:"")}
   if(k==="projects"){const pts=x.points||[];t=x.name;s=[x.client,x.address].filter(Boolean).join(" · ");n="";
