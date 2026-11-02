@@ -54,6 +54,7 @@ h2{font:700 18px var(--display);margin:0}
 input[type=search]{flex:1;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit}
 .btn{border:0;border-radius:10px;padding:10px 14px;font:600 15px var(--body);cursor:pointer;background:var(--accent);color:var(--accent-ink)}
 .btn.ghost{background:var(--chip);color:var(--fg)}
+.grp{display:flex;justify-content:space-between;gap:8px;padding:10px 14px 6px;font-weight:700;font-size:14px;color:var(--muted,#667);border-top:1px solid var(--line,#e3e6ee)}
 .btn.waze{display:block;text-align:center;text-decoration:none;background:#33ccff;color:#05222e;margin:8px 0}
 .btn.danger{background:transparent;color:var(--bad);border:1.5px solid var(--bad)}
 .btn:disabled{opacity:.6}
@@ -243,6 +244,7 @@ const ICON={
 ICON.projects='<path d="M3 5h7v14H3zM14 5h7v6h-7zM14 15h7v4h-7z"/>';
 const TABS=[["home","בית"],["jobs","עבודות"],["projects","פרויקטים"],["stock","מלאי"],["tasks","משימות"],["debts","חובות"],["expenses","הוצאות"]];
 const PT={cam:{l:"מצלמה",c:"#1747b8",s:"C"},net:{l:"נק׳ רשת",c:"#11845b",s:"N"},wifi:{l:"WiFi",c:"#7b3fc4",s:"W"},audio:{l:"אודיו",c:"#d9730d",s:"A"},other:{l:"אחר",c:"#5d6b85",s:"•"}};
+const OWED="חייבים לי", isOwed=d=>d.dir===OWED;
 const TAX=["ביטוח לאומי","מס הכנסה",'מע"מ'];
 const DEBT_CATS=["ספק","ביטוח לאומי","מס הכנסה",'מע"מ',"אשראי/הלוואה","אחר"];
 const EXP_CATS=["ציוד","כלי עבודה","דלק ורכב","ביטוח לאומי","מס הכנסה",'מע"מ',"תקשורת","רואת חשבון","עובדים","אחר"];
@@ -267,10 +269,10 @@ const SCHEMA={
   ["status","סטטוס","select",0,["תכנון","הצעת מחיר","בביצוע","הסתיים"]],["notes","הערות","textarea"]]},
  tasks:{title:"משימה",fields:[["title","מה צריך לעשות","text",1],["client","לקוח","text"],["date","תאריך","date",0,null,"half"],["time","שעה","time",0,null,"half"],
   ["done","סטטוס","select",0,["פתוח","בוצע"]],["notes","הערות","textarea"]]},
- debts:{title:"חוב",fields:[["name","למי","text",1],["cat","סוג","select",0,DEBT_CATS],["amount","סכום ₪","num"],["due","תאריך תשלום","date"],
+ debts:{title:"חוב",fields:[["name","שם","text",1],["dir","כיוון","select",0,["אני חייב",OWED]],["cat","סוג","select",0,DEBT_CATS],["amount","סכום ₪","num"],["due","תאריך תשלום","date"],
   ["monthly","החזר חודשי ₪","num"],["paid","סטטוס","select",0,["פתוח","שולם"]],["notes","הערות","textarea"]]},
  expenses:{title:"הוצאה",fields:[["date","תאריך","date"],["vendor","ספק / חנות","text",1],["cat","קטגוריה","select",0,EXP_CATS],["amount","סכום כולל ₪","num"],
-  ["vat",'מע"מ ששולם ₪',"num"],["for_job","עבור לקוח","text"],["receipt","יש קבלה?","select",0,["","כן","לא","מזומן"]],["notes","הערות","textarea"]]}
+  ["vat",'מע"מ ששולם ₪',"num"],["kind","סוג הוצאה","select",0,["","קבועה","פרויקט"]],["for_job","עבור לקוח / פרויקט","text"],["qty","כמות","num",0,null,"half"],["unit_price","מחיר ליחידה ₪","num",0,null,"half"],["receipt","יש קבלה?","select",0,["","כן","לא","מזומן"]],["notes","הערות","textarea"]]}
 };
 const data={jobs:[],stock:[],tasks:[],debts:[],expenses:[],morning_docs:[],projects:[],quote_followups:[]};
 let curProject=null,curJob=null;
@@ -483,10 +485,10 @@ function heLongDate(d=new Date()){let s=d.toLocaleDateString("he-IL",{weekday:"l
 function taskRow(t){const late=t.date&&t.date<today();const when=t.date?(t.date===today()?"היום":late?"באיחור · "+heDate(t.date):heDate(t.date))+(t.time?" "+t.time:""):"בלי תאריך";
   return `<div class="trow${late?" late":""}"><button class="chk" type="button" data-taskdone="${esc(t.id)}" aria-label="סימון כבוצע: ${esc(t.title)}"></button><button type="button" class="tb" data-edit="tasks" data-id="${esc(t.id)}"><b>${esc(t.title)}</b><span>${esc([when,t.client].filter(Boolean).join(" · "))}</span></button></div>`}
 function home(){
-  const owed=data.jobs.filter(j=>owedOf(j)>0), inv=openInvoices();
-  const owedSum=owed.reduce((a,j)=>a+owedOf(j),0)+inv.reduce((a,d)=>a+num(d.amount),0);
+  const owed=data.jobs.filter(j=>owedOf(j)>0), inv=openInvoices(), owedS=data.debts.filter(d=>isOwed(d)&&d.paid!=="שולם");
+  const owedSum=owedS.reduce((a,d)=>a+num(d.amount),0)+inv.reduce((a,d)=>a+num(d.amount),0);
   const unknown=data.jobs.filter(j=>!j.paid||j.paid==="לא ידוע");
-  const open=data.debts.filter(d=>d.paid!=="שולם"), debtSum=open.reduce((a,d)=>a+num(d.amount),0);
+  const open=data.debts.filter(d=>!isOwed(d)&&d.paid!=="שולם"), debtSum=open.reduce((a,d)=>a+num(d.amount),0);
   const tax=open.filter(d=>TAX.includes(d.cat));
   const low=data.stock.filter(s=>num(s.min_qty)>0&&num(s.qty)<=num(s.min_qty));
   const tasks=data.tasks.filter(t=>t.done!=="בוצע").sort((a,b)=>(a.date||"9").localeCompare(b.date||"9"));
@@ -513,8 +515,8 @@ function home(){
    ${tasks.length>nowT.length+nextT.length?`<button class="row" type="button" data-go="tasks" style="justify-items:center"><span class="t" style="color:var(--accent)">כל המשימות (${tasks.length})</span></button>`:""}</div></section>
   ${todayJobs.length||todayProj.length?`<section><h2>היום בשטח</h2><div class="list" style="margin-top:8px">${todayJobs.map(j=>row("jobs",j)).join("")}${todayProj.map(p=>row("projects",p)).join("")}</div></section>`:""}
   <div class="tiles">
-   <button class="tile ${owedSum?'bad':''}" data-go="jobs" data-f="owed"><span>חייבים לי</span><b>${ils(owedSum)}</b><span>${inv.length} חשבוניות + ${owed.length} עבודות</span></button>
-   <button class="tile ${debtSum?'warn':''}" data-go="debts"><span>אני חייב</span><b>${ils(debtSum)}</b><span>${open.length} חובות פתוחים</span></button>
+   <button class="tile ${owedSum?'good':''}" data-go="debts" data-f="owed"><span>חייבים לי</span><b>${ils(owedSum)}</b><span>${owedS.length} מהגיליון + ${inv.length} חשבוניות פתוחות</span></button>
+   <button class="tile ${debtSum?'warn':''}" data-go="debts" data-f="open"><span>אני חייב</span><b>${ils(debtSum)}</b><span>${open.length} חובות פתוחים</span></button>
    <button class="tile ${low.length?'bad':'good'}" data-go="stock" data-f="low"><span>חסר במלאי</span><b>${low.length}</b><span>${data.stock.length} פריטים</span></button>
    <button class="tile" data-go="tasks"><span>משימות פתוחות</span><b>${tasks.length}</b><span>${tasks.filter(t=>t.date&&t.date<=today()).length} להיום או באיחור</span></button>
   </div>
@@ -621,8 +623,8 @@ const FILTERS={
  stock:[["all","הכל"],["have","יש במלאי"],["low","חסר"],["morning","מ-Morning"]],
  projects:[["active","פעילים"],["done","הסתיימו"],["all","הכל"]],
  tasks:[["open","פתוח"],["done","בוצע"],["all","הכל"]],
- debts:[["open","פתוח"],["tax","מיסים"],["paid","שולם"],["all","הכל"]],
- expenses:[["all","הכל"],["year","השנה"],["month","החודש"]]
+ debts:[["open","אני חייב"],["owed","חייבים לי"],["tax","מיסים"],["paid","שולם"],["all","הכל"]],
+ expenses:[["all","הכל"],["fixed","קבועות"],["project","עלויות פרויקטים"],["month","החודש"]]
 };
 function pass(k,x){
   const f=filt[k]||FILTERS[k][0][0];
@@ -634,14 +636,15 @@ function pass(k,x){
    case "stock:have":return num(x.qty)>0; case "stock:morning":return !!x.morning_item_id;
    case "projects:active":return x.status!=="הסתיים"; case "projects:done":return x.status==="הסתיים";
    case "tasks:open":return x.done!=="בוצע"; case "tasks:done":return x.done==="בוצע";
-   case "debts:open":return x.paid!=="שולם"; case "debts:paid":return x.paid==="שולם"; case "debts:tax":return TAX.includes(x.cat);
-   case "expenses:year":return (x.date||"").startsWith(String(new Date().getFullYear())); case "expenses:month":return (x.date||"").startsWith(today().slice(0,7));
+   case "debts:open":return !isOwed(x)&&x.paid!=="שולם"; case "debts:owed":return isOwed(x)&&x.paid!=="שולם"; case "debts:paid":return x.paid==="שולם"; case "debts:tax":return TAX.includes(x.cat);
+   case "expenses:fixed":return x.kind==="קבועה"; case "expenses:project":return x.kind==="פרויקט"; case "expenses:year":return (x.date||"").startsWith(String(new Date().getFullYear())); case "expenses:month":return (x.date||"").startsWith(today().slice(0,7));
   }
   return true;
 }
 function sorted(k){
   const a=data[k].slice();
-  if(k==="jobs"||k==="expenses")a.sort((x,y)=>(y.date||"").localeCompare(x.date||""));
+  if(k==="expenses"&&filt.expenses==="project")a.sort((x,y)=>String(x.for_job||"").localeCompare(String(y.for_job||""),"he"));
+  else if(k==="jobs"||k==="expenses")a.sort((x,y)=>(y.date||"").localeCompare(x.date||""));
   else if(k==="projects")a.sort((x,y)=>String(y.created_at).localeCompare(String(x.created_at)));
   else if(k==="stock")a.sort((x,y)=>(num(y.qty)>0)-(num(x.qty)>0)||String(x.name||"").localeCompare(String(y.name||""),"he"));
   else if(k==="tasks")a.sort((x,y)=>(x.date||"9").localeCompare(y.date||"9"));
@@ -668,15 +671,28 @@ const EMPTY={
 };
 function listBody(k){
   const items=sorted(k).filter(x=>pass(k,x));
-  if(!items.length)return `<div class="list"><div class="empty">${data[k].length?"אין תוצאות לסינון הזה.":EMPTY[k]}</div></div>`;
+  if(!items.length&&!(k==="debts"&&filt.debts==="owed"))return `<div class="list"><div class="empty">${data[k].length?"אין תוצאות לסינון הזה.":EMPTY[k]}</div></div>`;
   let total="";
   if(k==="jobs"){const inv=(filt.jobs==="owed")?openInvoices():[];total=`<div class="sum"><span>${items.length} עבודות · חייבים</span><span>${ils(items.reduce((a,j)=>a+owedOf(j),0))}</span></div>`;
     if(inv.length)total=`<div class="sum"><span>חשבוניות פתוחות ב־Morning</span><span>${ils(inv.reduce((a,d)=>a+num(d.amount),0))}</span></div>${inv.map(docRow).join("")}`+total}
-  if(k==="debts")total=`<div class="sum"><span>סה״כ פתוח</span><span>${ils(items.filter(d=>d.paid!=="שולם").reduce((a,d)=>a+num(d.amount),0))}</span></div>`;
-  if(k==="expenses")total=`<div class="sum"><span>${items.length} הוצאות</span><span>${ils(items.reduce((a,x)=>a+num(x.amount),0))}</span></div>`;
+  if(k==="debts"){const f=filt.debts||"open",opn=items.filter(d=>d.paid!=="שולם");
+    if(f==="owed"){const inv=openInvoices();
+      total=`<div class="sum"><span>סה״כ חייבים לי</span><span>${ils(opn.reduce((a,d)=>a+num(d.amount),0)+inv.reduce((a,d)=>a+num(d.amount),0))}</span></div>`+
+       (inv.length?`<div class="grp"><span>חשבוניות פתוחות ב־Morning (${inv.length})</span><span>${ils(inv.reduce((a,d)=>a+num(d.amount),0))}</span></div>${inv.map(docRow).join("")}`:"")+
+       (items.length?`<div class="grp"><span>מהגיליון (${items.length})</span><span>${ils(opn.reduce((a,d)=>a+num(d.amount),0))}</span></div>`:"");
+      return `<div class="list">${total}${items.map(x=>row(k,x)).join("")}</div>${syncNote()}`}
+    total=`<div class="sum"><span>סה״כ ${f==="all"||f==="paid"?"":"פתוח"}</span><span>${ils(opn.filter(d=>f!=="all"||!isOwed(d)).reduce((a,d)=>a+num(d.amount),0))}</span></div>`}
+  if(k==="expenses"){total=`<div class="sum"><span>${items.length} הוצאות</span><span>${ils(items.reduce((a,x)=>a+num(x.amount),0))}</span></div>`;
+    if(filt.expenses==="project"){const g={};items.forEach(x=>(g[x.for_job||"בלי פרויקט"]||=[]).push(x));
+      return `<div class="list">${total}${Object.entries(g).map(([p,a])=>`<div class="grp"><span>${esc(p)} · ${a.length} פריטים</span><span>${ils(a.reduce((s,x)=>s+num(x.amount),0))}</span></div>${a.map(x=>row(k,x)).join("")}`).join("")}</div>${syncNote()}`}
+    if(filt.expenses==="fixed"){const g={};items.forEach(x=>(g[(x.date||"").slice(0,7)||"—"]||=[]).push(x));
+      return `<div class="list">${total}${Object.entries(g).sort((a,b)=>b[0].localeCompare(a[0])).map(([m,a])=>`<div class="grp"><span>${m==="—"?"בלי תאריך":heMonth(m)}</span><span>${ils(a.reduce((s,x)=>s+num(x.amount),0))}</span></div>${a.map(x=>row(k,x)).join("")}`).join("")}</div>${syncNote()}`}}
   if(k==="stock")total=`<div class="sum"><span>שווי מלאי</span><span>${ils(items.reduce((a,s)=>a+num(s.qty)*num(s.unit_cost),0))}</span></div>`;
   return `<div class="list">${total}${items.map(x=>row(k,x)).join("")}</div>`;
 }
+const HE_M=["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
+const heMonth=ym=>{const [y,m]=String(ym).split("-");return HE_M[Number(m)-1]?HE_M[Number(m)-1]+" "+y:ym};
+const syncNote=()=>`<div class="note" style="margin-top:8px">שורות עם "גיליון" מתעדכנות לבד מהגיליונות פעם בשעה. שינוי סכום עושים בגיליון. סטטוס "שולם" והערות שכתבת כאן נשמרים.</div>`;
 function row(k,x){
   let t="",s="",n="",p="";
   if(k==="jobs"){const o=owedOf(x);t=x.client||"ללא שם";s=[x.place,x.work,x.date?heDate(x.date):""].filter(Boolean).join(" · ");n=x.price?ils(x.price):"";
@@ -687,8 +703,10 @@ function row(k,x){
   if(k==="projects"){const pts=x.points||[];t=x.name;s=[x.client,x.address].filter(Boolean).join(" · ");n="";
     p=`<span class="pill ${x.status==="הסתיים"?"good":""}">${esc(x.status||"תכנון")}</span> <span class="pill">${pts.length} סימונים</span>${x.quote_doc_id?' <span class="pill">הצעה</span>':""}${x.job_id?' <span class="pill good">עבודה</span>':""}`}
   if(k==="tasks"){const late=x.done!=="בוצע"&&x.date&&x.date<today();t=x.title;s=[x.client,x.date?heDate(x.date)+(x.time?" "+x.time:""):""].filter(Boolean).join(" · ");p=x.done==="בוצע"?`<span class="pill good">בוצע</span>`:late?`<span class="pill bad">באיחור</span>`:`<span class="pill">פתוח</span>`}
-  if(k==="debts"){t=x.name;s=[x.cat,x.due?"לתשלום "+heDate(x.due):"",x.monthly?ils(x.monthly)+" לחודש":""].filter(Boolean).join(" · ");n=x.amount?ils(x.amount):"—";p=x.paid==="שולם"?`<span class="pill good">שולם</span>`:(x.amount?"":`<span class="pill warn">חסר סכום</span>`)}
-  if(k==="expenses"){t=x.vendor||x.cat;s=[x.cat,x.for_job,x.date?heDate(x.date):""].filter(Boolean).join(" · ");n=x.amount?ils(x.amount):"";p=x.vat?`<span class="pill">מע״מ ${ils(x.vat)}</span>`:""}
+  if(k==="debts"){t=x.name;s=[isOwed(x)?(x.orig?"מתוך "+ils(x.orig):""):x.cat,x.due?"לתשלום "+heDate(x.due):"",x.monthly?ils(x.monthly)+" לחודש":""].filter(Boolean).join(" · ");n=x.amount?ils(x.amount):"—";p=x.paid==="שולם"?`<span class="pill good">שולם</span>`:(x.amount?(isOwed(x)?`<span class="pill good">חייב לי</span>`:""):`<span class="pill warn">חסר סכום</span>`);if(x.sheet_key)p+=' <span class="pill">גיליון</span>'}
+  if(k==="expenses"){t=x.vendor||x.cat;
+    s=x.kind==="פרויקט"?[x.for_job,x.qty&&x.unit_price?`${x.qty} × ${ils(x.unit_price)}`:""].filter(Boolean).join(" · "):x.kind==="קבועה"?[x.cat!=="קבועה"?x.cat:"",x.date?heMonth(x.date.slice(0,7)):""].filter(Boolean).join(" · "):[x.cat,x.for_job,x.date?heDate(x.date):""].filter(Boolean).join(" · ");
+    n=x.amount?ils(x.amount):"";p=[x.kind?`<span class="pill">${esc(x.kind==="פרויקט"?"פרויקט":"קבועה")}</span>`:"",x.vat?`<span class="pill">מע״מ ${ils(x.vat)}</span>`:"",/⚠/.test(x.notes||"")?`<span class="pill warn">לבדוק</span>`:""].filter(Boolean).join(" ")}
   if(k==="jobs"){const ic=[(x.photos||[]).length?`📷${(x.photos||[]).length}`:"",x.signature_path?"✍️":""].filter(Boolean).join(" ");
     return `<button type="button" class="row" data-open-job="${esc(x.id)}"><span class="t">${esc(t)}</span><span class="n">${n}</span><span class="s">${esc(s)}${ic?" · "+ic:""}</span><span class="p">${p}</span></button>`}
   if(k==="projects")return `<button type="button" class="row" data-open-project="${esc(x.id)}"><span class="t">${esc(t)}</span><span class="n"></span><span class="s">${esc(s)}</span><span class="p">${p}</span></button>`;

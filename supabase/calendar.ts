@@ -53,6 +53,44 @@ Deno.serve(async (req) => {
       }
       return json({ok: true, dry: !!body.dry, report});
     }
+
+    // money sheets (sent by the Apps Script): debts + "owed to me" from the עו"ש file, fixed monthly expenses,
+    // and project cost items. The sheet is the source: rows are matched by sheet_key, amounts updated,
+    // rows gone from the sheet removed. Status and notes typed in the app are kept.
+    if (body.action === "money") {
+      const now = new Date().toISOString(), out: Record<string, unknown> = {};
+      const mirror = async (table: string, prefix: string, want: Record<string, unknown>[], keep: string[]) => {
+        const { data: have, error } = await sb.from(table).select("id,sheet_key," + keep.join(",")).like("sheet_key", prefix + "%");
+        if (error) throw new Error(table + ": " + error.message);
+        const byKey = new Map((have || []).map((r: any) => [r.sheet_key, r]));
+        let added = 0, changed = 0, removed = 0;
+        const ins: Record<string, unknown>[] = [];
+        for (const w of want) {
+          const h: any = byKey.get(w.sheet_key as string); byKey.delete(w.sheet_key as string);
+          if (!h) { ins.push({...w, created_at: now, updated_at: now}); added++; continue; }
+          const diff = Object.keys(w).some((k) => String(w[k] ?? "") !== String(h[k] ?? ""));
+          if (diff) { const { error: e } = await sb.from(table).update({...w, updated_at: now}).eq("id", h.id); if (e) throw new Error(table + ": " + e.message); changed++; }
+        }
+        if (ins.length) { const { error: e } = await sb.from(table).insert(ins); if (e) throw new Error(table + ": " + e.message); }
+        const gone = [...byKey.values()].map((r: any) => r.id);
+        if (gone.length) { const { error: e } = await sb.from(table).delete().in("id", gone); if (e) throw new Error(table + ": " + e.message); removed = gone.length; }
+        return {count: want.length, added, changed, removed};
+      };
+      const TAXCAT: Record<string, string> = {"מס הכנסה": "מס הכנסה", "ביטוח לאומי": "ביטוח לאומי", "ביטוח לואמי": "ביטוח לאומי"};
+      const catOf = (n: string) => /מע.?מ/.test(n) ? 'מע"מ' : TAXCAT[n] || Object.entries(TAXCAT).find(([k]) => n.includes(k))?.[1] || null;
+      try {
+        if (Array.isArray(body.debts)) out.debts = await mirror("debts", "debt:", body.debts.map((d: any) => ({sheet_key: d.key, name: d.name, amount: d.amount, dir: "אני חייב",
+          cat: catOf(d.name) || (/אשראי|פפר|הלוואה/.test(d.name) ? "אשראי/הלוואה" : "אחר"), source: 'גיליון עו"ש · חובות'})), ["name", "amount", "dir", "cat", "source"]);
+        if (Array.isArray(body.owed)) out.owed = await mirror("debts", "owed:", body.owed.map((d: any) => ({sheet_key: d.key, name: d.name, amount: d.amount, orig: d.orig, dir: "חייבים לי",
+          cat: "חייבים לי", source: 'גיליון עו"ש · נכסים'})), ["name", "amount", "orig", "dir", "cat", "source"]);
+        if (Array.isArray(body.fixed)) out.fixed = await mirror("expenses", "fixed:", body.fixed.map((x: any) => ({sheet_key: x.key, vendor: x.name, date: x.date, amount: x.amount, kind: "קבועה",
+          cat: catOf(x.name) || "קבועה", source: 'גיליון עו"ש · הוצאות 2026'})), ["vendor", "date", "amount", "kind", "cat", "source"]);
+        if (Array.isArray(body.costs)) out.costs = await mirror("expenses", "cost:", body.costs.map((x: any) => ({sheet_key: x.key, vendor: x.item, for_job: x.project, amount: x.amount,
+          qty: x.qty, unit_price: x.unit, kind: "פרויקט", cat: "עלות פרויקט", notes: [x.note, x.check ? "⚠ " + x.check : ""].filter(Boolean).join(" · ") || null,
+          source: "גיליון אהרן מערכות 2026 · עלויות פרויקטים"})), ["vendor", "for_job", "amount", "qty", "unit_price", "kind", "cat", "notes", "source"]);
+      } catch (e) { return json({ok: false, message: String((e as Error).message || e), done: out}, 500); }
+      return json({ok: true, ...out});
+    }
   }
 
   const now = Date.now();
