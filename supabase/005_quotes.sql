@@ -16,3 +16,8 @@ create table if not exists public.quote_followups (
 alter table public.quote_followups enable row level security;
 drop policy if exists owner_all on public.quote_followups;
 create policy owner_all on public.quote_followups for all using (public.is_owner()) with check (public.is_owner());
+
+-- Project <-> quote <-> job links (run 2026-11-02)
+alter table public.projects add column if not exists quote_doc_id text;
+alter table public.projects add column if not exists job_id uuid;
+alter table public.jobs add column if not exists project_id uuid;

@@ -423,7 +423,7 @@ function quoteRow(d){
   const f=fu(d),age=daysSince(d.doc_date);let p;
   if(activeQ(f)){const late=f.next_date&&f.next_date<today();p=isDue(d)?`<span class="pill bad">${late?"באיחור "+daysSince(f.next_date)+" ימים":"לחזור היום"}</span>`:`<span class="pill">לחזור ${heDate(f.next_date)}</span>`}
   else p=`<span class="pill ${f.status==="זכינו"?"good":""}">${esc(f.status)}</span>`;
-  const s=[`הצעה ${d.number}`,age>0?`לפני ${age} ימים`:"היום",f.status==="בטיפול"?"בטיפול":"",f.contacts?`פניתי ${f.contacts}×`:"",quotePhone(d,f)?"":"אין טלפון",d.description||""].filter(Boolean).join(" · ");
+  const s=[`הצעה ${d.number}`,age>0?`לפני ${age} ימים`:"היום",f.status==="בטיפול"?"בטיפול":"",f.contacts?`פניתי ${f.contacts}×`:"",quotePhone(d,f)?"":"אין טלפון",projOfQuote(d.id)?"📐 "+projOfQuote(d.id).name:"",d.description||""].filter(Boolean).join(" · ");
   return `<button type="button" class="row" data-quote="${esc(d.id)}"><span class="t">${esc(d.client||"")}</span><span class="n">${ils(d.amount)}</span><span class="s">${esc(s)}</span><span class="p">${p}</span></button>`;
 }
 function quotesView(){
@@ -448,6 +448,7 @@ function openQuote(id){
    <div class="filters">${[["מחר",1],["3 ימים",3],["שבוע",7],["שבועיים",14]].map(([l,n])=>`<button type="button" class="chipbtn" data-days="${n}">${l}</button>`).join("")}</div>
    <div class="f"><label for="q_status">סטטוס</label><select id="q_status">${QST.map(s=>`<option ${s===f.status?"selected":""}>${s}</option>`).join("")}</select></div>
    <div class="f"><label for="q_notes">הערות (מה הלקוח אמר)</label><textarea id="q_notes">${esc(f.notes||"")}</textarea></div>
+   ${projOfQuote(d.id)?`<button class="btn ghost" type="button" data-open-project="${esc(projOfQuote(d.id).id)}">📐 פרויקט: ${esc(projOfQuote(d.id).name)}</button>`:""}
    ${job?`<button class="btn ghost" type="button" data-open-job="${esc(job.id)}">פתיחת העבודה של ההצעה</button>`:`<button class="btn ghost" type="button" id="q_won">🎉 זכינו – לפתוח עבודה</button>`}
    <div class="actions"><button class="btn" type="submit">שמירה</button><button class="btn ghost" type="button" data-close>סגירה</button></div></form>`;
   el.hidden=false;
@@ -464,8 +465,10 @@ function openQuote(id){
   el.onclick=async e=>{
     if(e.target===el||e.target.closest("[data-close]")){el.hidden=true;render();return}
     if(e.target.closest("[data-open-job]")){el.hidden=true;return}
+    if(e.target.closest("[data-open-project]")){el.hidden=true;tab="projects";return}
     const dd=e.target.closest("[data-days]");if(dd){$("#q_next").value=addDays(today(),+dd.dataset.days);return}
     const w=e.target.closest("#q_won");
+    if(w&&projOfQuote(d.id)){await saveFu(d.id,{phone:ph.value.trim()||null,notes:$("#q_notes").value.trim()||null});el.hidden=true;jobFromProject(projOfQuote(d.id),null);return}
     if(w){w.disabled=true;w.textContent="פותח עבודה…";
       const body={client:d.client||"לקוח",phone:ph.value.trim()||null,work:d.description||null,price:d.amount??null,date:today(),paid:"לא ידוע",
         notes:`מהצעת מחיר ${d.number}`,morning_doc_id:d.id,updated_at:new Date().toISOString()};
@@ -547,7 +550,7 @@ function row(k,x){
   if(k==="stock"){const lowv=num(x.min_qty)>0&&num(x.qty)<=num(x.min_qty);t=x.name;s=[x.category,x.brand,x.model,x.sell_price?"מכירה "+ils(x.sell_price):"",x.barcode?"ברקוד ✓":""].filter(Boolean).join(" · ");n=`${num(x.qty)} יח׳`;
     p=(lowv?`<span class="pill bad">להזמין</span> `:"")+(x.morning_item_id?`<span class="pill">Morning</span>`:"")}
   if(k==="projects"){const pts=x.points||[];t=x.name;s=[x.client,x.address].filter(Boolean).join(" · ");n="";
-    p=`<span class="pill ${x.status==="הסתיים"?"good":""}">${esc(x.status||"תכנון")}</span> <span class="pill">${pts.length} סימונים</span>`}
+    p=`<span class="pill ${x.status==="הסתיים"?"good":""}">${esc(x.status||"תכנון")}</span> <span class="pill">${pts.length} סימונים</span>${x.quote_doc_id?' <span class="pill">הצעה</span>':""}${x.job_id?' <span class="pill good">עבודה</span>':""}`}
   if(k==="tasks"){const late=x.done!=="בוצע"&&x.date&&x.date<today();t=x.title;s=[x.client,x.date?heDate(x.date):""].filter(Boolean).join(" · ");p=x.done==="בוצע"?`<span class="pill good">בוצע</span>`:late?`<span class="pill bad">באיחור</span>`:`<span class="pill">פתוח</span>`}
   if(k==="debts"){t=x.name;s=[x.cat,x.due?"לתשלום "+heDate(x.due):"",x.monthly?ils(x.monthly)+" לחודש":""].filter(Boolean).join(" · ");n=x.amount?ils(x.amount):"—";p=x.paid==="שולם"?`<span class="pill good">שולם</span>`:(x.amount?"":`<span class="pill warn">חסר סכום</span>`)}
   if(k==="expenses"){t=x.vendor||x.cat;s=[x.cat,x.for_job,x.date?heDate(x.date):""].filter(Boolean).join(" · ");n=x.amount?ils(x.amount):"";p=x.vat?`<span class="pill">מע״מ ${ils(x.vat)}</span>`:""}
@@ -635,6 +638,7 @@ async function jobView(m){
   m.innerHTML=`<div class="bar"><button class="btn ghost" type="button" id="backJob">→ עבודות</button><h2 style="flex:1;min-width:0;overflow-wrap:anywhere">${esc(j.client||"עבודה")}</h2><button class="btn ghost" type="button" data-edit="jobs" data-id="${esc(j.id)}">פרטים</button></div>
    <div class="note">${esc([j.place,j.address,j.date?heDate(j.date):"",j.phone].filter(Boolean).join(" · "))||"—"}${j.price?` · ${ils(j.price)}`:""} ${o>0?`<span class="pill bad">חייב ${ils(o)}</span>`:j.paid==="כן"?`<span class="pill good">שולם</span>`:""}</div>
 
+   ${j.project_id&&data.projects.find(x=>x.id===j.project_id)?`<button class="btn ghost" type="button" data-open-project="${esc(j.project_id)}">📐 פרויקט: ${esc(data.projects.find(x=>x.id===j.project_id).name)}</button>`:""}
    <h2>סיכום העבודה ללקוח</h2>
    <div class="f"><textarea id="jSum" style="min-height:90px" placeholder="מה בוצע, איזה ציוד הותקן, הערות ללקוח">${esc(j.summary??j.work??"")}</textarea></div>
 
@@ -912,11 +916,63 @@ function textSheet(p){
     const {error}=await sb.from("projects").update({notes:$("#txd").value.trim(),manual,updated_at:new Date().toISOString()}).eq("id",p.id);
     if(error){toast("השמירה נכשלה");return}el.hidden=true;toast("נשמר");await loadAll()};
 }
+function projQuote(p){return p.quote_doc_id&&data.morning_docs.find(d=>d.id===p.quote_doc_id)}
+function projOfQuote(id){return data.projects.find(p=>p.quote_doc_id===id)}
+function countsText(p){return ["cam","net","wifi","audio","other"].filter(k=>cnt(p,k)).map(k=>`${cnt(p,k)} ${({cam:"מצלמות",net:"נק׳ רשת",wifi:"נק׳ WiFi",audio:"אודיו",other:"אחר"})[k]}`).join(" · ")}
+function projLinks(p){
+  const qd=projQuote(p), job=p.job_id&&data.jobs.find(j=>j.id===p.job_id);
+  const qPart=qd?`<div class="list"><button type="button" class="row" data-quote="${esc(qd.id)}"><span class="t">הצעת מחיר ${esc(qd.number)} · ${esc(qd.client||"")}</span><span class="n">${ils(qd.amount)}</span><span class="s">${heDate(qd.doc_date)} · ${esc(qd.status_name||"")} ב־Morning · מעקב: ${esc(fu(qd).status)}</span><span class="p"><span class="pill">Morning</span></span></button></div>
+     <div class="bar">${qd.url?`<a class="btn ghost" href="${esc(qd.url)}" target="_blank" rel="noopener" style="flex:1;text-align:center;text-decoration:none">פתיחת ההצעה</a>`:""}<button class="btn ghost" type="button" id="pickQuote">החלפת הצעה</button></div>`
+    :p.quote_doc_id?`<div class="note">ההצעה המקושרת לא נמצאה. אולי עוד לא סונכרנה – לחץ "סנכרון Morning". <a href="#" id="pickQuote">לבחור אחרת</a></div>`
+    :`<button class="btn ghost" type="button" id="pickQuote">🔗 קישור הצעת מחיר מ־Morning</button>`;
+  const jPart=job?`<button class="btn ghost" type="button" data-open-job="${esc(job.id)}">🛠️ פתיחת העבודה של הפרויקט</button>`
+    :`<button class="btn" type="button" id="projJob">🛠️ פתח עבודה מהפרויקט</button>`;
+  return qPart+jPart;
+}
+function pickQuote(p){
+  const name=String(p.client||p.name||"").trim();
+  const qs=data.morning_docs.filter(d=>d.type===10).sort((a,b)=>(b.status===0)-(a.status===0)||String(b.doc_date).localeCompare(String(a.doc_date)));
+  const hit=d=>name&&d.client&&(d.client.includes(name)||name.includes(d.client));
+  const mine=qs.filter(hit), other=qs.filter(d=>!hit(d)).slice(0,60);
+  const used=new Set(data.projects.filter(x=>x.id!==p.id&&x.quote_doc_id).map(x=>x.quote_doc_id));
+  const li=d=>`<button type="button" class="row" data-pick="${esc(d.id)}"><span class="t">${esc(d.client||"")}</span><span class="n">${ils(d.amount)}</span><span class="s">הצעה ${esc(d.number)} · ${heDate(d.doc_date)}${d.description?" · "+esc(d.description):""}${used.has(d.id)?" · מקושרת לפרויקט אחר":""}</span><span class="p"><span class="pill ${d.status===0?"":"good"}">${d.status===0?"פתוחה":esc(d.status_name||"")}</span></span></button>`;
+  const el=$("#sheet");
+  el.innerHTML=`<form novalidate><h3>איזו הצעת מחיר שייכת לפרויקט?</h3>
+   <div class="note">אחרי שמוציאים הצעה ב־Morning היא מופיעה כאן תוך שעה (או מיד, בלחיצה על "סנכרון Morning").</div>
+   ${mine.length?`<h2>של ${esc(name)}</h2><div class="list">${mine.map(li).join("")}</div>`:""}
+   <h2>${mine.length?"שאר ההצעות":"כל ההצעות"}</h2><div class="list">${other.length?other.map(li).join(""):`<div class="empty">אין הצעות מ־Morning.</div>`}</div>
+   <div class="actions">${p.quote_doc_id?`<button class="btn danger" type="button" data-unlink>ביטול הקישור</button>`:""}<button class="btn ghost" type="button" data-close>סגירה</button></div></form>`;
+  el.hidden=false;
+  el.onclick=async e=>{
+    if(e.target===el||e.target.closest("[data-close]")){el.hidden=true;return}
+    const pk=e.target.closest("[data-pick]"),un=e.target.closest("[data-unlink]");if(!pk&&!un)return;
+    const d=pk&&data.morning_docs.find(x=>x.id===pk.dataset.pick);
+    const patch={quote_doc_id:d?d.id:null,updated_at:new Date().toISOString()};
+    if(d&&!p.client)patch.client=d.client;
+    if(d&&(!p.status||p.status==="תכנון"))patch.status="הצעת מחיר";
+    const {error}=await sb.from("projects").update(patch).eq("id",p.id);
+    if(error){toast("השמירה נכשלה");return}
+    el.hidden=true;toast(d?"ההצעה קושרה לפרויקט":"הקישור בוטל");await loadAll();
+  };
+}
+async function jobFromProject(p,btn){
+  if(btn){btn.disabled=true;btn.textContent="פותח עבודה…"}
+  const qd=projQuote(p), f=qd?fu(qd):null;
+  const body={client:p.client||(qd&&qd.client)||p.name,phone:(qd&&quotePhone(qd,f))||null,place:p.name,address:p.address||null,
+    work:[countsText(p),p.notes].filter(Boolean).join("\n")||null,price:qd?qd.amount:null,date:today(),paid:"לא ידוע",
+    notes:`מפרויקט: ${p.name}${qd?` · הצעת מחיר ${qd.number}`:""}`,morning_doc_id:qd?qd.id:null,project_id:p.id,updated_at:new Date().toISOString()};
+  const {data:j,error}=await sb.from("jobs").insert(body).select().single();
+  if(error){toast("לא הצלחתי לפתוח עבודה");if(btn){btn.disabled=false;btn.textContent="🛠️ פתח עבודה מהפרויקט"}return}
+  await sb.from("projects").update({job_id:j.id,status:"בביצוע",updated_at:new Date().toISOString()}).eq("id",p.id);
+  if(qd)await saveFu(qd.id,{status:"זכינו",job_id:j.id});
+  toast("נפתחה עבודה 🛠️");curJob=j.id;curProject=null;tab="jobs";await loadAll();render();window.scrollTo(0,0);
+}
 async function projectView(m){
   const p=curP();if(!p){curProject=null;render();return}
   p.points=p.points||[];
   m.innerHTML=`<div class="bar"><button class="btn ghost" type="button" id="backProj">→ פרויקטים</button><h2 style="flex:1;min-width:0;overflow-wrap:anywhere">${esc(p.name)}</h2><button class="btn ghost" type="button" data-edit="projects" data-id="${esc(p.id)}">פרטים</button></div>
    ${[p.client,p.address,p.status].some(Boolean)?`<div class="note">${esc([p.client,p.address,p.status].filter(Boolean).join(" · "))}</div>`:""}
+   ${projLinks(p)}
    ${p.plan_path?`
    <div class="palette" role="group" aria-label="מה לסמן">${Object.entries(PT).map(([k,v])=>`<button type="button" data-pt="${k}" aria-pressed="${k===ptType}"><span class="dot" style="background:${v.c}">${v.s}</span>${v.l}</button>`).join("")}</div>
    <div class="plan" id="plan"><img id="planImg" alt="תוכנית המהנדס" crossorigin="anonymous"><div id="mks"></div></div>
@@ -1011,10 +1067,12 @@ document.addEventListener("click",async e=>{
   if(e.target.closest("#ptCancel")){const p=curP();selPt=null;drawMarkers(p);selBox(p);return}
   if(e.target.closest("#sharePlan")){sharePlan(curP());return}
   if(e.target.closest("#textProj")||e.target.closest("#textProj2")){textSheet(curP());return}
+  if(e.target.closest("#pickQuote")){e.preventDefault();pickQuote(curP());return}
+  if(e.target.closest("#projJob")){jobFromProject(curP(),e.target.closest("#projJob"));return}
   const qd=e.target.closest("[data-quote]");if(qd){openQuote(qd.dataset.quote);return}
   const g=e.target.closest("[data-go]");if(g){e.preventDefault();if(g.dataset.f)filt[g.dataset.go]=g.dataset.f;go(g.dataset.go);return}
   const n=e.target.closest("[data-new]");if(n){openSheet(n.dataset.new);return}
-  const op=e.target.closest("[data-open-project]");if(op){curProject=op.dataset.openProject;render();window.scrollTo(0,0);return}
+  const op=e.target.closest("[data-open-project]");if(op){curProject=op.dataset.openProject;curJob=null;tab="projects";render();window.scrollTo(0,0);return}
   if(e.target.closest("#scanBtn")){startScan();return}
   if(e.target.closest("#pullItems")){const b=e.target.closest("#pullItems");b.disabled=true;b.textContent="מושך…";
     const {data:r,error}=await sb.functions.invoke("items",{body:{action:"pull"}});toast(error?"המשיכה נכשלה":(r&&r.message)||"עודכן");await loadAll();return}
