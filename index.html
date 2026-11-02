@@ -54,6 +54,7 @@ h2{font:700 18px var(--display);margin:0}
 input[type=search]{flex:1;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit}
 .btn{border:0;border-radius:10px;padding:10px 14px;font:600 15px var(--body);cursor:pointer;background:var(--accent);color:var(--accent-ink)}
 .btn.ghost{background:var(--chip);color:var(--fg)}
+.btn.waze{display:block;text-align:center;text-decoration:none;background:#33ccff;color:#05222e;margin:8px 0}
 .btn.danger{background:transparent;color:var(--bad);border:1.5px solid var(--bad)}
 .btn:disabled{opacity:.6}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--warn);outline-offset:2px}
@@ -812,6 +813,7 @@ function jobDocs(j){
   const mine=docs.filter(d=>hit(d)||d.id===j.morning_doc_id);
   return {mine,other:docs.filter(d=>!mine.includes(d)).slice(0,40)};
 }
+const wazeBtn=a=>{a=String(a||"").trim();return a?`<a class="btn waze" href="https://waze.com/ul?q=${encodeURIComponent(a)}&navigate=yes" target="_blank" rel="noopener">🚗 ניווט ב־Waze</a>`:""};
 async function jobView(m){
   const j=curJ();if(!j){curJob=null;render();return}
   const photos=j.photos||[];
@@ -821,6 +823,7 @@ async function jobView(m){
   const o=owedOf(j);
   m.innerHTML=`<div class="bar"><button class="btn ghost" type="button" id="backJob">→ עבודות</button><h2 style="flex:1;min-width:0;overflow-wrap:anywhere">${esc(j.client||"עבודה")}</h2><button class="btn ghost" type="button" data-edit="jobs" data-id="${esc(j.id)}">פרטים</button></div>
    <div class="note">${esc([j.place,j.address,j.date?heDate(j.date):"",j.phone].filter(Boolean).join(" · "))||"—"}${j.price?` · ${ils(j.price)}`:""} ${o>0?`<span class="pill bad">חייב ${ils(o)}</span>`:j.paid==="כן"?`<span class="pill good">שולם</span>`:""}</div>
+   ${wazeBtn(j.address)}
 
    ${j.project_id&&data.projects.find(x=>x.id===j.project_id)?`<button class="btn ghost" type="button" data-open-project="${esc(j.project_id)}">📐 פרויקט: ${esc(data.projects.find(x=>x.id===j.project_id).name)}</button>`:""}
    <h2>מסמכים ב־Morning (${mine.length})</h2>
@@ -1213,6 +1216,7 @@ async function projectView(m){
   p.points=p.points||[];
   m.innerHTML=`<div class="bar"><button class="btn ghost" type="button" id="backProj">→ פרויקטים</button><h2 style="flex:1;min-width:0;overflow-wrap:anywhere">${esc(p.name)}</h2><button class="btn ghost" type="button" data-edit="projects" data-id="${esc(p.id)}">פרטים</button></div>
    ${[p.client,p.address,p.status].some(Boolean)?`<div class="note">${esc([p.client,p.address,p.status].filter(Boolean).join(" · "))}</div>`:""}
+   ${wazeBtn(p.address)}
    ${projLinks(p)}
    ${p.plan_path?`
    <div class="palette" role="group" aria-label="מה לסמן">${Object.entries(PT).map(([k,v])=>`<button type="button" data-pt="${k}" aria-pressed="${k===ptType}"><span class="dot" style="background:${v.c}">${v.s}</span>${v.l}</button>`).join("")}</div>
