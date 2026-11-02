@@ -365,7 +365,42 @@ $("#syncBtn").addEventListener("click",async()=>{
 /* ---------- nav ---------- */
 $("#nav").innerHTML=TABS.map(([k,l])=>`<button type="button" data-tab="${k}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>${l}</button>`).join("");
 $("#nav").addEventListener("click",e=>{const b=e.target.closest("button");if(b)go(b.dataset.tab)});
-function go(t){if(t!=="projects"||tab==="projects")curProject=null;if(t!=="jobs"||tab==="jobs")curJob=null;tab=t;q="";render();window.scrollTo(0,0)}
+function go(t){if(t!==tab||curJob||curProject)deeper();if(t!=="projects"||tab==="projects")curProject=null;if(t!=="jobs"||tab==="jobs")curJob=null;tab=t;q="";render();window.scrollTo(0,0)}
+
+/* ---------- back: swipe like any app (and the phone's back button) ---------- */
+let navDepth=0;
+function deeper(){navDepth++;try{history.pushState({d:navDepth},"")}catch(e){}}
+function doBack(){
+  const sc=document.querySelector(".scan #closeScan");if(sc){sc.click();return true}
+  const sh=$("#sheet");if(sh&&!sh.hidden){sh.hidden=true;render();return true}
+  if(curJob){curJob=null;render();window.scrollTo(0,0);return true}
+  if(curProject){curProject=null;selPt=null;render();window.scrollTo(0,0);return true}
+  if(tab!=="home"){tab="home";q="";render();window.scrollTo(0,0);return true}
+  return false;
+}
+window.addEventListener("popstate",()=>{if(navDepth>0)navDepth--;if($("#app")&&!$("#app").hidden)doBack()});
+function swipeBack(){const sh=$("#sheet");if((!sh||sh.hidden)&&navDepth>0&&!document.querySelector(".scan"))history.back();else doBack()}
+(function(){
+  // drag from right to left (anywhere), or from the left edge to the right, to go back
+  const NO=".plan,canvas,input[type=range],video";
+  let sx=0,sy=0,dx=0,on=false,dir=0,el=null,decided=false;
+  const target=()=>{const sh=$("#sheet");if(sh&&!sh.hidden)return sh.querySelector("form");return $("#main")};
+  const reset=anim=>{if(!el)return;el.style.transition=anim?"transform .18s ease-out, opacity .18s":"";el.style.transform="";el.style.opacity="";const e=el;setTimeout(()=>{e.style.transition=""},200);el=null};
+  document.addEventListener("touchstart",e=>{
+    if(e.touches.length!==1||$("#app").hidden){on=false;return}
+    const t=e.touches[0];if(e.target.closest&&e.target.closest(NO)){on=false;return}
+    sx=t.clientX;sy=t.clientY;dx=0;on=true;decided=false;dir=0;el=null;
+  },{passive:true});
+  document.addEventListener("touchmove",e=>{
+    if(!on)return;const t=e.touches[0];dx=t.clientX-sx;const dy=t.clientY-sy;
+    if(!decided){if(Math.abs(dx)<10&&Math.abs(dy)<10)return;decided=true;
+      if(Math.abs(dy)>Math.abs(dx)*0.8){on=false;return}
+      dir=dx<0?-1:(sx<30?1:0);if(!dir){on=false;return}el=target()}
+    const p=Math.max(0,dir*dx);if(el){el.style.transform=`translateX(${dir*p*0.6}px)`;el.style.opacity=String(Math.max(.55,1-p/700))}
+  },{passive:true});
+  const end=()=>{if(!on)return;on=false;const p=Math.max(0,dir*dx);reset(true);if(decided&&dir&&p>80)swipeBack()};
+  document.addEventListener("touchend",end,{passive:true});document.addEventListener("touchcancel",()=>{on=false;reset(true)},{passive:true});
+})();
 
 /* ---------- views ---------- */
 function render(){
@@ -1170,7 +1205,7 @@ document.addEventListener("click",async e=>{
   if(e.target.closest("#faceToggle")){if(getFid()){try{localStorage.removeItem(FID)}catch(x){}toast("Face ID כובה")}else if(await canFaceId()){await enableFaceId()}else toast("המכשיר הזה לא תומך ב-Face ID");render();return}
   if(e.target.closest("#backProj")){curProject=null;selPt=null;render();return}
   if(e.target.closest("#backJob")){curJob=null;render();return}
-  const oj=e.target.closest("[data-open-job]");if(oj){curJob=oj.dataset.openJob;tab="jobs";render();window.scrollTo(0,0);return}
+  const oj=e.target.closest("[data-open-job]");if(oj){deeper();curJob=oj.dataset.openJob;tab="jobs";render();window.scrollTo(0,0);return}
   if(e.target.closest("#signBtn")){signaturePad(curJ());return}
   const ph=e.target.closest("[data-photo]");if(ph){photoSheet(curJ(),+ph.dataset.photo);return}
   if(e.target.closest("#shareReport")){shareReport(curJ());return}
@@ -1186,7 +1221,7 @@ document.addEventListener("click",async e=>{
   const qd=e.target.closest("[data-quote]");if(qd){openQuote(qd.dataset.quote);return}
   const g=e.target.closest("[data-go]");if(g){e.preventDefault();if(g.dataset.f)filt[g.dataset.go]=g.dataset.f;go(g.dataset.go);return}
   const n=e.target.closest("[data-new]");if(n){openSheet(n.dataset.new);return}
-  const op=e.target.closest("[data-open-project]");if(op){curProject=op.dataset.openProject;curJob=null;tab="projects";render();window.scrollTo(0,0);return}
+  const op=e.target.closest("[data-open-project]");if(op){deeper();curProject=op.dataset.openProject;curJob=null;tab="projects";render();window.scrollTo(0,0);return}
   if(e.target.closest("#scanBtn")){startScan();return}
   if(e.target.closest("#pullItems")){const b=e.target.closest("#pullItems");b.disabled=true;b.textContent="מושך…";
     const {data:r,error}=await sb.functions.invoke("items",{body:{action:"pull"}});toast(error?"המשיכה נכשלה":(r&&r.message)||"עודכן");await loadAll();return}
