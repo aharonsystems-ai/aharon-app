@@ -180,6 +180,13 @@ nav button[aria-current=page]{color:var(--accent)}
 .sigimg{background:#fff;border-radius:12px;border:1px solid var(--line);padding:6px;max-height:140px;object-fit:contain;width:100%}
 .btn.wa{background:#1fa855;color:#fff}
 @media (prefers-reduced-motion:no-preference){.sheet form{animation:up .18s ease-out}@keyframes up{from{transform:translateY(30px);opacity:.6}}}
+/* tap targets: at least 44px (40px for chips) on the phone */
+.chipbtn{min-height:40px;padding:8px 14px}
+.sechead .btn{min-height:40px}
+.trow .chk{width:34px;height:34px;position:relative}
+.trow .chk::after{content:"";position:absolute;inset:-6px}
+#syncBtn{min-height:44px;min-width:44px}
+.note a{display:inline-block;padding:8px 2px;margin:-8px 0}
 </style>
 </head>
 <body>
@@ -293,7 +300,7 @@ function owedOf(j){if(j.paid==="לא")return Math.max(0,num(j.price)-num(j.paid_
 function profitOf(j){if(j.profit!==null&&j.profit!==undefined)return num(j.profit);if(j.cost!==null&&j.cost!==undefined)return num(j.price)-num(j.cost);return 0}
 const openInvoices=()=>data.morning_docs.filter(d=>(d.type===300||d.type===305)&&d.status===0);
 // עבודה שיש לה חשבונית פתוחה ב-Morning – לא נספרת פעמיים.
-// התאמה: מקושרת לעבודה, או אותו לקוח + אותו סכום (עד 45 יום), או אותו סכום באותו תאריך (עד יומיים) כשהשם בחשבונית שונה.
+// התאמה: מקושרת לעבודה, או אותו לקוח + אותו סכום (עד 45 יום), או אותו סכום באותו תאריך בדיוק כשהשם בחשבונית שונה.
 let _im=null;
 function invMatches(){
   const key=[data.jobs,data.morning_docs,data.jobs.length,data.morning_docs.length];
@@ -305,10 +312,19 @@ function invMatches(){
   const gap=(j,d)=>{const a=Date.parse(j.date||""),b=Date.parse(d.doc_date||"");return a&&b?Math.abs(a-b):Infinity};
   jobs.filter(j=>!m.has(j.id)).forEach(j=>{const o=owedOf(j),hit=jobDocHit(j);
     const d=inv.find(x=>!used.has(x.id)&&Math.abs(num(x.amount)-o)<1&&hit(x)&&gap(j,x)<=45*day)
-         ||inv.find(x=>!used.has(x.id)&&Math.abs(num(x.amount)-o)<1&&gap(j,x)<=2*day);
+         ||inv.find(x=>!used.has(x.id)&&Math.abs(num(x.amount)-o)<1&&j.date&&String(x.doc_date||"").slice(0,10)===String(j.date).slice(0,10));
     if(d)take(j,d)});
   _im={key,m};return m}
 const owedJobs=()=>{const m=invMatches();return data.jobs.filter(j=>owedOf(j)>0&&!m.has(j.id))};
+// "חייבים לי" – one calculation for every screen: open Morning invoices + sheet rows (minus ones that are the same invoice) + unpaid jobs with no invoice
+function owedParts(){
+  const inv=openInvoices(),nm=v=>String(v||"").trim().replace(/\s+/g," ");
+  const like=(a,b)=>{a=nm(a);b=nm(b);return !!(a&&b&&(a===b||a.includes(b)||b.includes(a)))};
+  const all=data.debts.filter(d=>isOwed(d)&&d.paid!=="שולם");
+  const dup=new Set(all.filter(d=>inv.some(x=>Math.abs(num(x.amount)-num(d.amount))<1&&like(x.client,d.name))).map(d=>d.id));
+  const sheet=all.filter(d=>!dup.has(d.id)),jobs=owedJobs(),amt=a=>a.reduce((t,d)=>t+num(d.amount),0);
+  const sInv=amt(inv),sSheet=amt(sheet),sJobs=jobs.reduce((t,j)=>t+owedOf(j),0);
+  return {inv,sheet,dup,jobs,sInv,sSheet,sJobs,total:sInv+sSheet+sJobs}}
 const openQuotes=()=>data.morning_docs.filter(d=>d.type===10&&d.status===0);
 
 /* ---------- auth ---------- */
@@ -399,7 +415,11 @@ let splashShown=false;
 function splash(){if(splashShown)return;splashShown=true;const sp=$("#splash");if(!sp)return;sp.hidden=false;
   const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
   setTimeout(()=>{sp.classList.add("out");setTimeout(()=>{sp.hidden=true;sp.classList.remove("out")},450)},reduce?300:1500)}
-function showApp(){$("#login").hidden=true;$("#app").hidden=false;splash();render();loadAll()}
+function showApp(){$("#login").hidden=true;$("#app").hidden=false;splash();
+  // show the last saved data right away; fresh data replaces it when it arrives
+  if(!loaded){try{const c=JSON.parse(localStorage.getItem("aharon-app-data")||"null");if(c&&c.data){Object.keys(data).forEach(k=>{if(Array.isArray(c.data[k]))data[k]=c.data[k]});lastSync=c.lastSync||null;loaded=true;
+    $("#status").textContent="מציג נתונים שמורים מ־"+new Date(c.at).toLocaleString("he-IL",{day:"numeric",month:"numeric",hour:"2-digit",minute:"2-digit"})}}catch(e){}}
+  render();loadAll()}
 const msg=t=>$("#loginMsg").textContent=t;
 const creds=()=>({email:$("#email").value.trim(),password:$("#pass").value});
 $("#loginForm").addEventListener("submit",async e=>{
@@ -421,8 +441,10 @@ async function loadAll(){
   $("#status").textContent="טוען…";
   try{
     const tables=["jobs","stock","tasks","debts","expenses","morning_docs","projects","quote_followups"];
-    const res=await Promise.all(tables.map(t=>sb.from(t).select("*").limit(5000)));
-    res.forEach((r,i)=>{if(r.error)throw r.error;data[tables[i]]=r.data||[]});
+    const all=async t=>{let out=[];for(let from=0;;from+=1000){const r=await sb.from(t).select("*").order(t==="quote_followups"?"doc_id":"id").range(from,from+999);if(r.error)throw r.error;out=out.concat(r.data||[]);if(!r.data||r.data.length<1000)break}return out};
+    const res=await Promise.all(tables.map(all));
+    res.forEach((rows,i)=>{data[tables[i]]=rows});
+    try{localStorage.setItem("aharon-app-data",JSON.stringify({at:Date.now(),data,lastSync}))}catch(e){}
     const lg=await sb.from("sync_log").select("at,ok,message").order("at",{ascending:false}).limit(1);
     lastSync=lg.data&&lg.data[0]||null;
     loaded=true;updateBadge();
@@ -446,9 +468,11 @@ function go(t){if(t!==tab||curJob||curProject)deeper();if(t!=="projects"||tab===
 /* ---------- back: swipe like any app (and the phone's back button) ---------- */
 let navDepth=0;
 function deeper(){navDepth++;try{history.pushState({d:navDepth},"")}catch(e){}}
+function sheetDirty(){const f=$("#sheet").hidden?null:$("#sheet").querySelector("form");return !!(f&&f.dataset.dirty==="1")}
+function sheetMayClose(){return !sheetDirty()||confirm("יש שינויים שלא נשמרו. לסגור בלי לשמור?")}
 function doBack(){
   const sc=document.querySelector(".scan #closeScan");if(sc){sc.click();return true}
-  const sh=$("#sheet");if(sh&&!sh.hidden){sh.hidden=true;render();return true}
+  const sh=$("#sheet");if(sh&&!sh.hidden){if(!sheetMayClose())return true;sh.hidden=true;render();return true}
   if(curJob){curJob=null;render();window.scrollTo(0,0);return true}
   if(curProject){curProject=null;selPt=null;render();window.scrollTo(0,0);return true}
   if(tab!=="home"){tab="home";q="";render();window.scrollTo(0,0);return true}
@@ -458,7 +482,7 @@ window.addEventListener("popstate",()=>{if(navDepth>0)navDepth--;if($("#app")&&!
 function swipeBack(){const sh=$("#sheet");if((!sh||sh.hidden)&&navDepth>0&&!document.querySelector(".scan"))history.back();else doBack()}
 (function(){
   // drag from right to left (anywhere), or from the left edge to the right, to go back
-  const NO=".plan,canvas,input[type=range],video";
+  const NO=".plan,canvas,input,textarea,select,video";
   let sx=0,sy=0,dx=0,on=false,dir=0,el=null,decided=false;
   const target=()=>{const sh=$("#sheet");if(sh&&!sh.hidden)return sh.querySelector("form");return $("#main")};
   const reset=anim=>{if(!el)return;el.style.transition=anim?"transform .18s ease-out, opacity .18s":"";el.style.transform="";el.style.opacity="";const e=el;setTimeout(()=>{e.style.transition=""},200);el=null};
@@ -503,7 +527,7 @@ function taskRow(t){const late=t.date&&t.date<today();const when=t.date?(t.date=
   return `<div class="trow${late?" late":""}"><button class="chk" type="button" data-taskdone="${esc(t.id)}" aria-label="סימון כבוצע: ${esc(t.title)}"></button><button type="button" class="tb" data-edit="tasks" data-id="${esc(t.id)}"><b>${esc(t.title)}</b><span>${esc([when,t.client].filter(Boolean).join(" · "))}</span></button></div>`}
 function home(){
   const owed=owedJobs(), inv=openInvoices(), owedS=data.debts.filter(d=>isOwed(d)&&d.paid!=="שולם");
-  const owedSum=owedS.reduce((a,d)=>a+num(d.amount),0)+inv.reduce((a,d)=>a+num(d.amount),0);
+  const P=owedParts(),owedSum=P.total;
   const unknown=data.jobs.filter(j=>!j.paid||j.paid==="לא ידוע");
   const open=data.debts.filter(d=>!isOwed(d)&&d.paid!=="שולם"), debtSum=open.reduce((a,d)=>a+num(d.amount),0);
   const tax=open.filter(d=>TAX.includes(d.cat));
@@ -527,18 +551,17 @@ function home(){
    <div class="date">${esc(heLongDate())}</div>
    <div class="sumline">${bits.length?"היום: "+bits.join(" · "):"אין משימות פתוחות להיום. יום נקי 👌"}</div>
   </section>
-  <section><div class="sechead"><h2>המשימות שלי</h2><button class="btn ghost" type="button" data-new="tasks">+ משימה</button></div>
-   <div class="list" style="margin-top:8px">${nowT.concat(nextT).length?nowT.concat(nextT).map(taskRow).join(""):`<div class="empty">אין משימות פתוחות.</div>`}
-   ${tasks.length>nowT.length+nextT.length?`<button class="row" type="button" data-go="tasks" style="justify-items:center"><span class="t" style="color:var(--accent)">כל המשימות (${tasks.length})</span></button>`:""}</div></section>
-  ${todayJobs.length||todayProj.length?`<section><h2>היום בשטח</h2><div class="list" style="margin-top:8px">${todayJobs.map(j=>row("jobs",j)).join("")}${todayProj.map(p=>row("projects",p)).join("")}</div></section>`:""}
   <div class="tiles">
-   <button class="tile ${owedSum?'good':''}" data-go="debts" data-f="owed"><span>חייבים לי</span><b>${ils(owedSum)}</b><span>${owedS.length} מהגיליון + ${inv.length} חשבוניות פתוחות</span></button>
+   <button class="tile ${owedSum?'good':''}" data-go="debts" data-f="owed"><span>חייבים לי</span><b>${ils(owedSum)}</b><span>${P.inv.length} חשבוניות · ${P.jobs.length} עבודות · ${P.sheet.length} מהגיליון</span></button>
    <button class="tile ${debtSum?'warn':''}" data-go="debts" data-f="open"><span>אני חייב</span><b>${ils(debtSum)}</b><span>${open.length} חובות פתוחים</span></button>
    <button class="tile ${low.length?'bad':'good'}" data-go="stock" data-f="low"><span>חסר במלאי</span><b>${low.length}</b><span>${data.stock.length} פריטים</span></button>
    <button class="tile" data-go="tasks"><span>משימות פתוחות</span><b>${tasks.length}</b><span>${tasks.filter(t=>t.date&&t.date<=today()).length} להיום או באיחור</span></button>
   </div>
+  <section><div class="sechead"><h2>המשימות שלי</h2><button class="btn ghost" type="button" data-new="tasks">+ משימה</button></div>
+   <div class="list" style="margin-top:8px">${nowT.concat(nextT).length?nowT.concat(nextT).map(taskRow).join(""):`<div class="empty">אין משימות פתוחות.</div>`}
+   ${tasks.length>nowT.length+nextT.length?`<button class="row" type="button" data-go="tasks" style="justify-items:center"><span class="t" style="color:var(--accent)">כל המשימות (${tasks.length})</span></button>`:""}</div></section>
+  ${todayJobs.length||todayProj.length?`<section><h2>היום בשטח</h2><div class="list" style="margin-top:8px">${todayJobs.map(j=>row("jobs",j)).join("")}${todayProj.map(p=>row("projects",p)).join("")}</div></section>`:""}
   ${quotes.length?`<button class="tile ${dueQ.length?'warn':''}" data-go="quotes" data-f="${dueQ.length?'due':'active'}"><span>הצעות מחיר · לחזור ללקוחות</span><b>${dueQ.length?dueQ.length+" להיום":"אין להיום"}</b><span>${quotes.length} פתוחות · ${ils(quotes.reduce((a,d)=>a+num(d.amount),0))} · לחץ לרשימה</span></button>`:""}
-  ${inv.length?`<h2>חשבוניות פתוחות ב־Morning</h2><div class="list">${inv.sort((a,b)=>String(b.doc_date).localeCompare(String(a.doc_date))).map(docRow).join("")}<div class="sum"><span>סה״כ</span><span>${ils(inv.reduce((a,d)=>a+num(d.amount),0))}</span></div></div>`:""}
   <section class="list" aria-label="סיכום שנה">
    <div class="sum"><span>הכנסות ${y} (לפי עבודות)</span><span>${ils(income)}</span></div>
    <div class="sum plain"><span>רווח בפועל ${y}</span><span>${ils(profit)}</span></div>
@@ -693,11 +716,12 @@ function listBody(k){
   if(k==="jobs"){const inv=(filt.jobs==="owed")?openInvoices():[];total=`<div class="sum"><span>${items.length} עבודות · חייבים</span><span>${ils(items.reduce((a,j)=>a+owedOf(j),0))}</span></div>`;
     if(inv.length)total=`<div class="sum"><span>חשבוניות פתוחות ב־Morning</span><span>${ils(inv.reduce((a,d)=>a+num(d.amount),0))}</span></div>${inv.map(docRow).join("")}`+total}
   if(k==="debts"){const f=filt.debts||"open",opn=items.filter(d=>d.paid!=="שולם");
-    if(f==="owed"){const inv=openInvoices();
-      total=`<div class="sum"><span>סה״כ חייבים לי</span><span>${ils(opn.reduce((a,d)=>a+num(d.amount),0)+inv.reduce((a,d)=>a+num(d.amount),0))}</span></div>`+
-       (inv.length?`<div class="grp"><span>חשבוניות פתוחות ב־Morning (${inv.length})</span><span>${ils(inv.reduce((a,d)=>a+num(d.amount),0))}</span></div>${inv.map(docRow).join("")}`:"")+
-       (items.length?`<div class="grp"><span>מהגיליון (${items.length})</span><span>${ils(opn.reduce((a,d)=>a+num(d.amount),0))}</span></div>`:"");
-      return `<div class="list">${total}${items.map(x=>row(k,x)).join("")}</div>${syncNote()}`}
+    if(f==="owed"){const P=owedParts(),mine=items.filter(d=>!P.dup.has(d.id));
+      total=`<div class="sum"><span>סה״כ חייבים לי</span><span>${ils(P.total)}</span></div>`+
+       (P.inv.length?`<div class="grp"><span>חשבוניות פתוחות ב־Morning (${P.inv.length})</span><span>${ils(P.sInv)}</span></div>${P.inv.map(docRow).join("")}`:"")+
+       (P.jobs.length?`<div class="grp"><span>עבודות שלא שולמו, בלי חשבונית (${P.jobs.length})</span><span>${ils(P.sJobs)}</span></div>${P.jobs.map(j=>row("jobs",j)).join("")}`:"")+
+       (mine.length?`<div class="grp"><span>מהגיליון (${mine.length})</span><span>${ils(P.sSheet)}</span></div>`:"");
+      return `<div class="list">${total}${mine.map(x=>row(k,x)).join("")}</div>${syncNote()}`}
     total=`<div class="sum"><span>סה״כ ${f==="all"||f==="paid"?"":"פתוח"}</span><span>${ils(opn.filter(d=>f!=="all"||!isOwed(d)).reduce((a,d)=>a+num(d.amount),0))}</span></div>`}
   if(k==="expenses"){total=`<div class="sum"><span>${items.length} הוצאות</span><span>${ils(items.reduce((a,x)=>a+num(x.amount),0))}</span></div>`;
     if(filt.expenses==="project"){const g={};items.forEach(x=>(g[x.for_job||"בלי פרויקט"]||=[]).push(x));
@@ -793,10 +817,10 @@ function openSheet(k,id,prefill,note){
    <div class="actions"><button class="btn" type="submit">שמירה</button><button class="btn ghost" type="button" data-close>סגירה</button>
    ${id?`<button class="btn danger" type="button" data-del>מחיקה</button>`:""}</div></form>`;
   el.hidden=false;
-  const form=$("#edit");
+  const form=$("#edit");form.addEventListener("input",()=>{form.dataset.dirty="1"});form.addEventListener("change",()=>{form.dataset.dirty="1"});
   if(form.elements.client&&["jobs","projects","tasks"].includes(k))clientAuto(form.elements.client,form);
   el.onclick=async e=>{
-    if(e.target===el||e.target.closest("[data-close]")){el.hidden=true;return}
+    if(e.target===el||e.target.closest("[data-close]")){if(sheetMayClose())el.hidden=true;return}
     const qb=e.target.closest("[data-q]");if(qb){const i=form.elements.qty;i.value=Math.max(0,num(i.value)+Number(qb.dataset.q));return}
     if(e.target.closest("[data-push]")){const b=e.target.closest("[data-push]");b.disabled=true;b.textContent="שולח ל-Morning…";
       const {data:r,error}=await sb.functions.invoke("items",{body:{action:"push",id}});
@@ -912,7 +936,7 @@ function waText(j){
   const lines=[`שלום ${first},`,`תודה שבחרת באהרן מערכות.`,""];
   const sum=String(j.summary??j.work??"").trim();
   if(sum)lines.push(`סיכום העבודה${j.date?` (${heDate(j.date)})`:""}:`,sum,"");
-  const o=owedOf(j)||(j.paid!=="כן"?num(j.price):0);
+  const o=owedOf(j);
   if(doc)lines.push(`${doc.type_name} מספר ${doc.number}: ${doc.url||""}`);
   if(o)lines.push(`סכום לתשלום: ${ils(o)}`);
   if(j.pay_link)lines.push(`לתשלום: ${j.pay_link}`);
@@ -1334,7 +1358,7 @@ async function sharePlan(p){
 }
 
 document.addEventListener("click",async e=>{
-  if(e.target.closest("#logout")){try{localStorage.removeItem(FID)}catch(x){}await sb.auth.signOut();return}
+  if(e.target.closest("#logout")){try{localStorage.removeItem(FID);localStorage.removeItem("aharon-app-data")}catch(x){}await sb.auth.signOut();return}
   if(e.target.closest("#faceToggle")){if(getFid()){try{localStorage.removeItem(FID)}catch(x){}toast("Face ID כובה")}else if(await canFaceId()){await enableFaceId()}else toast("המכשיר הזה לא תומך ב-Face ID");render();return}
   if(e.target.closest("#backProj")){curProject=null;selPt=null;render();return}
   if(e.target.closest("#backJob")){curJob=null;render();return}
@@ -1364,7 +1388,7 @@ document.addEventListener("click",async e=>{
   const ed=e.target.closest("[data-edit]");if(ed){openSheet(ed.dataset.edit,ed.dataset.id);return}
   const f=e.target.closest("[data-filt]");if(f){filt[tab]=f.dataset.filt;render()}
 });
-document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#sheet").hidden)$("#sheet").hidden=true});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#sheet").hidden&&sheetMayClose())$("#sheet").hidden=true});
 
 if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(()=>{})}
 boot();
