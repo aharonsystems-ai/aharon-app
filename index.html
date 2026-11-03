@@ -292,6 +292,12 @@ const warrantyOf=j=>{const e=warrantyEnd(j);if(!e||j.date>today())return "";retu
 function owedOf(j){if(j.paid==="לא")return Math.max(0,num(j.price)-num(j.paid_amount));if(j.paid==="חלקי")return Math.max(0,num(j.price)-num(j.paid_amount));return 0}
 function profitOf(j){if(j.profit!==null&&j.profit!==undefined)return num(j.profit);if(j.cost!==null&&j.cost!==undefined)return num(j.price)-num(j.cost);return 0}
 const openInvoices=()=>data.morning_docs.filter(d=>(d.type===300||d.type===305)&&d.status===0);
+// עבודה שיש לה חשבונית פתוחה ב-Morning באותו סכום (עד 45 יום) – לא נספרת פעמיים
+function invMatches(){const used=new Set(),m=new Map(),inv=openInvoices();
+  data.jobs.filter(j=>owedOf(j)>0).sort((a,b)=>(a.date||"").localeCompare(b.date||"")).forEach(j=>{const o=owedOf(j),jt=Date.parse(j.date||"")||0;
+    const d=inv.find(x=>!used.has(x.id)&&Math.abs(num(x.amount)-o)<1&&(!jt||!x.doc_date||Math.abs(Date.parse(x.doc_date)-jt)<=45*864e5));
+    if(d){used.add(d.id);m.set(j.id,d)}});return m}
+const owedJobs=()=>{const m=invMatches();return data.jobs.filter(j=>owedOf(j)>0&&!m.has(j.id))};
 const openQuotes=()=>data.morning_docs.filter(d=>d.type===10&&d.status===0);
 
 /* ---------- auth ---------- */
@@ -485,7 +491,7 @@ function heLongDate(d=new Date()){let s=d.toLocaleDateString("he-IL",{weekday:"l
 function taskRow(t){const late=t.date&&t.date<today();const when=t.date?(t.date===today()?"היום":late?"באיחור · "+heDate(t.date):heDate(t.date))+(t.time?" "+t.time:""):"בלי תאריך";
   return `<div class="trow${late?" late":""}"><button class="chk" type="button" data-taskdone="${esc(t.id)}" aria-label="סימון כבוצע: ${esc(t.title)}"></button><button type="button" class="tb" data-edit="tasks" data-id="${esc(t.id)}"><b>${esc(t.title)}</b><span>${esc([when,t.client].filter(Boolean).join(" · "))}</span></button></div>`}
 function home(){
-  const owed=data.jobs.filter(j=>owedOf(j)>0), inv=openInvoices(), owedS=data.debts.filter(d=>isOwed(d)&&d.paid!=="שולם");
+  const owed=owedJobs(), inv=openInvoices(), owedS=data.debts.filter(d=>isOwed(d)&&d.paid!=="שולם");
   const owedSum=owedS.reduce((a,d)=>a+num(d.amount),0)+inv.reduce((a,d)=>a+num(d.amount),0);
   const unknown=data.jobs.filter(j=>!j.paid||j.paid==="לא ידוע");
   const open=data.debts.filter(d=>!isOwed(d)&&d.paid!=="שולם"), debtSum=open.reduce((a,d)=>a+num(d.amount),0);
@@ -630,7 +636,7 @@ function pass(k,x){
   const f=filt[k]||FILTERS[k][0][0];
   if(q){const s=Object.values(x).join(" ");if(!s.includes(q))return false}
   switch(k+":"+f){
-   case "jobs:owed":return owedOf(x)>0; case "jobs:unknown":return !x.paid||x.paid==="לא ידוע"; case "jobs:paid":case "jobs:done":return jobDone(x);
+   case "jobs:owed":return owedOf(x)>0&&!invMatches().has(x.id); case "jobs:unknown":return !x.paid||x.paid==="לא ידוע"; case "jobs:paid":case "jobs:done":return jobDone(x);
    case "jobs:warranty":return warrantyOf(x)==="on"; case "jobs:expired":return warrantyOf(x)==="off";
    case "stock:low":return num(x.min_qty)>0&&num(x.qty)<=num(x.min_qty);
    case "stock:have":return num(x.qty)>0; case "stock:morning":return !!x.morning_item_id;
@@ -696,7 +702,7 @@ const syncNote=()=>`<div class="note" style="margin-top:8px">שורות עם "ג
 function row(k,x){
   let t="",s="",n="",p="";
   if(k==="jobs"){const o=owedOf(x);t=x.client||"ללא שם";s=[x.place,x.work,x.date?heDate(x.date):""].filter(Boolean).join(" · ");n=x.price?ils(x.price):"";
-    p=o>0?`<span class="pill bad">חייב ${ils(o)}</span>`:jobDone(x)?`<span class="pill good">בוצע</span>`:x.paid==="כן"?`<span class="pill good">שולם</span>`:`<span class="pill warn">תשלום לא ידוע</span>`;
+    p=o>0?(invMatches().has(x.id)?`<span class="pill warn">חשבונית פתוחה ${esc(invMatches().get(x.id).number||"")}</span>`:`<span class="pill bad">חייב ${ils(o)}</span>`):jobDone(x)?`<span class="pill good">בוצע</span>`:x.paid==="כן"?`<span class="pill good">שולם</span>`:`<span class="pill warn">תשלום לא ידוע</span>`;
     const w=warrantyOf(x);if(w)s=(s?s+" · ":"")+(w==="on"?`באחריות עד ${heDate(warrantyEnd(x))}`:"אחריות הסתיימה")}
   if(k==="stock"){const lowv=num(x.min_qty)>0&&num(x.qty)<=num(x.min_qty);t=x.name;s=[x.category,x.brand,x.model,x.sku?'מק"ט '+x.sku:"",x.sell_price?"מכירה "+ils(x.sell_price):"",x.barcode?"ברקוד ✓":""].filter(Boolean).join(" · ");n=`${num(x.qty)} יח׳`;
     p=(lowv?`<span class="pill bad">להזמין</span> `:"")+(x.morning_item_id?`<span class="pill">Morning</span>`:"")}
