@@ -292,11 +292,22 @@ const warrantyOf=j=>{const e=warrantyEnd(j);if(!e||j.date>today())return "";retu
 function owedOf(j){if(j.paid==="לא")return Math.max(0,num(j.price)-num(j.paid_amount));if(j.paid==="חלקי")return Math.max(0,num(j.price)-num(j.paid_amount));return 0}
 function profitOf(j){if(j.profit!==null&&j.profit!==undefined)return num(j.profit);if(j.cost!==null&&j.cost!==undefined)return num(j.price)-num(j.cost);return 0}
 const openInvoices=()=>data.morning_docs.filter(d=>(d.type===300||d.type===305)&&d.status===0);
-// עבודה שיש לה חשבונית פתוחה ב-Morning באותו סכום (עד 45 יום) – לא נספרת פעמיים
-function invMatches(){const used=new Set(),m=new Map(),inv=openInvoices();
-  data.jobs.filter(j=>owedOf(j)>0).sort((a,b)=>(a.date||"").localeCompare(b.date||"")).forEach(j=>{const o=owedOf(j),jt=Date.parse(j.date||"")||0;
-    const d=inv.find(x=>!used.has(x.id)&&Math.abs(num(x.amount)-o)<1&&(!jt||!x.doc_date||Math.abs(Date.parse(x.doc_date)-jt)<=45*864e5));
-    if(d){used.add(d.id);m.set(j.id,d)}});return m}
+// עבודה שיש לה חשבונית פתוחה ב-Morning – לא נספרת פעמיים.
+// התאמה: מקושרת לעבודה, או אותו לקוח + אותו סכום (עד 45 יום), או אותו סכום באותו תאריך (עד יומיים) כשהשם בחשבונית שונה.
+let _im=null;
+function invMatches(){
+  const key=[data.jobs,data.morning_docs,data.jobs.length,data.morning_docs.length];
+  if(_im&&_im.key.every((v,i)=>v===key[i]))return _im.m;
+  const used=new Set(),m=new Map(),inv=openInvoices(),day=864e5;
+  const jobs=data.jobs.filter(j=>owedOf(j)>0).sort((a,b)=>(a.date||"").localeCompare(b.date||""));
+  const take=(j,d)=>{used.add(d.id);m.set(j.id,d)};
+  jobs.forEach(j=>{const d=inv.find(x=>!used.has(x.id)&&x.id===j.morning_doc_id);if(d)take(j,d)});
+  const gap=(j,d)=>{const a=Date.parse(j.date||""),b=Date.parse(d.doc_date||"");return a&&b?Math.abs(a-b):Infinity};
+  jobs.filter(j=>!m.has(j.id)).forEach(j=>{const o=owedOf(j),hit=jobDocHit(j);
+    const d=inv.find(x=>!used.has(x.id)&&Math.abs(num(x.amount)-o)<1&&hit(x)&&gap(j,x)<=45*day)
+         ||inv.find(x=>!used.has(x.id)&&Math.abs(num(x.amount)-o)<1&&gap(j,x)<=2*day);
+    if(d)take(j,d)});
+  _im={key,m};return m}
 const owedJobs=()=>{const m=invMatches();return data.jobs.filter(j=>owedOf(j)>0&&!m.has(j.id))};
 const openQuotes=()=>data.morning_docs.filter(d=>d.type===10&&d.status===0);
 
@@ -677,7 +688,7 @@ const EMPTY={
 };
 function listBody(k){
   const items=sorted(k).filter(x=>pass(k,x));
-  if(!items.length&&!(k==="debts"&&filt.debts==="owed"))return `<div class="list"><div class="empty">${data[k].length?"אין תוצאות לסינון הזה.":EMPTY[k]}</div></div>`;
+  if(!items.length&&!(k==="debts"&&filt.debts==="owed")&&!(k==="jobs"&&filt.jobs==="owed"&&openInvoices().length))return `<div class="list"><div class="empty">${data[k].length?"אין תוצאות לסינון הזה.":EMPTY[k]}</div></div>`;
   let total="";
   if(k==="jobs"){const inv=(filt.jobs==="owed")?openInvoices():[];total=`<div class="sum"><span>${items.length} עבודות · חייבים</span><span>${ils(items.reduce((a,j)=>a+owedOf(j),0))}</span></div>`;
     if(inv.length)total=`<div class="sum"><span>חשבוניות פתוחות ב־Morning</span><span>${ils(inv.reduce((a,d)=>a+num(d.amount),0))}</span></div>${inv.map(docRow).join("")}`+total}
@@ -825,15 +836,17 @@ async function signed(paths){
 }
 function curJ(){return data.jobs.find(x=>x.id===curJob)}
 function waPhone(p){let d=String(p||"").replace(/\D/g,"");if(d.startsWith("00"))d=d.slice(2);if(d.startsWith("0"))d="972"+d.slice(1);if(d.length===9&&d[0]==="5")d="972"+d;return d.length>=11?d:""}
-function jobDocs(j){
+function jobDocHit(j){
   const name=String(j.client||"").trim();
-  const docs=data.morning_docs.filter(d=>[300,305,320,330,400,10].includes(d.type)).sort((a,b)=>String(b.doc_date).localeCompare(String(a.doc_date)));
   const place=String(j.place||"").split(",")[0].trim(), ph=String(j.phone||"").replace(/\D/g,"").slice(-9);
-  const hit=d=>{const c=String(d.client||"").trim();if(!c)return false;
+  return d=>{const c=String(d.client||"").trim();if(!c)return false;
     // same name, or one contains the other when the shorter is a full name (2+ words) - "דני" alone must not match "דני כהן"
     const like=(x,y)=>{x=normName(x);y=normName(y);if(!x||!y)return false;if(x===y)return true;const [sh,lo]=x.length<y.length?[x,y]:[y,x];return sh.split(" ").length>=2&&lo.includes(sh)};
     if(like(c,name)||like(c,place))return true;
-    return ph.length===9&&String(d.client_phone||"").replace(/\D/g,"").slice(-9)===ph};
+    return ph.length===9&&String(d.client_phone||"").replace(/\D/g,"").slice(-9)===ph}}
+function jobDocs(j){
+  const docs=data.morning_docs.filter(d=>[300,305,320,330,400,10].includes(d.type)).sort((a,b)=>String(b.doc_date).localeCompare(String(a.doc_date)));
+  const hit=jobDocHit(j);
   const mine=docs.filter(d=>hit(d)||d.id===j.morning_doc_id);
   return {mine,other:docs.filter(d=>!mine.includes(d)).slice(0,40)};
 }
