@@ -107,6 +107,15 @@ nav button[aria-current=page]{color:var(--accent)}
 .qtyrow{display:flex;gap:8px;align-items:center}
 .qtyrow input{flex:1}
 .pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.btn.mic{width:100%;padding:18px;font-size:18px;border-radius:14px}
+.btn.mic.on{background:var(--bad);color:#fff;animation:micpulse 1.2s ease-in-out infinite}
+@keyframes micpulse{50%{box-shadow:0 0 0 10px rgba(220,60,60,.18)}}
+.vcard{border:1px solid var(--line);background:var(--card);border-radius:14px;padding:10px 12px;margin:10px 0;display:grid;gap:8px}
+.vcard.off{opacity:.45}
+.vhead{display:flex;gap:10px;align-items:center;justify-content:space-between}
+.vhead select{width:auto}
+.vchk{display:flex;gap:6px;align-items:center;font-weight:700}
+.talk{display:flex;gap:8px;align-items:center;justify-content:center;width:100%;padding:14px;font-size:17px;border-radius:14px}
 .pair .f label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sec{font:700 15px var(--display);margin:6px 0 0;border-top:1px solid var(--line);padding-top:12px}
 .secret{-webkit-text-security:disc}
@@ -554,6 +563,7 @@ function home(){
    <div class="date">${esc(heLongDate())}</div>
    <div class="sumline">${bits.length?"היום: "+bits.join(" · "):"אין משימות פתוחות להיום. יום נקי 👌"}</div>
   </section>
+  <button class="btn talk" type="button" data-voice>🎤 לדבר – להוסיף משימות, עבודות ופרויקטים</button>
   <div class="tiles">
    <button class="tile ${owedSum?'good':''}" data-go="debts" data-f="owed"><span>חייבים לי</span><b>${ils(owedSum)}</b><span>${P.inv.length} חשבוניות · ${P.jobs.length} עבודות · ${P.sheet.length} מהגיליון</span></button>
    <button class="tile ${debtSum?'warn':''}" data-go="debts" data-f="open"><span>אני חייב</span><b>${ils(debtSum)}</b><span>${open.length} חובות פתוחים</span></button>
@@ -699,7 +709,7 @@ function sorted(k){
 function listView(k){
   const cur=filt[k]||FILTERS[k][0][0];
   const extra=k==="stock"?`<div class="bar"><label class="btn" style="flex:1;text-align:center;cursor:pointer">🤖 צילום מדבקה (AI)<input type="file" accept="image/*" id="aiFile" hidden></label><button class="btn ghost" type="button" id="scanBtn">📷 ברקוד</button></div><div class="bar"><button class="btn ghost" type="button" id="pullItems" style="flex:1">משיכת פריטים מ-Morning</button></div>`:"";
-  return `<div class="bar"><h2 style="flex:1">${TABS.find(t=>t[0]===k)[1]}</h2>${k==="jobs"?`<button class="btn ghost" type="button" data-go="clients">לקוחות</button>`:""}<button class="btn${k==="stock"?" ghost":""}" type="button" data-new="${k}">+ ${SCHEMA[k].title}</button></div>
+  return `<div class="bar"><h2 style="flex:1">${TABS.find(t=>t[0]===k)[1]}</h2>${k==="jobs"?`<button class="btn ghost" type="button" data-go="clients">לקוחות</button>`:""}${["jobs","tasks","projects"].includes(k)?`<button class="btn ghost" type="button" data-voice aria-label="לדבר">🎤</button>`:""}<button class="btn${k==="stock"?" ghost":""}" type="button" data-new="${k}">+ ${SCHEMA[k].title}</button></div>
   ${extra}
   <div class="bar"><input id="q" type="search" placeholder="חיפוש" aria-label="חיפוש"></div>
   <div class="filters" role="group" aria-label="סינון">${FILTERS[k].map(([v,l])=>`<button type="button" class="chipbtn" data-filt="${v}" aria-pressed="${v===cur}">${l}</button>`).join("")}</div>
@@ -906,6 +916,112 @@ async function unmerge(alias,btn){
   const a=(data.client_aliases||[]).find(x=>normName(x.alias)===normName(alias));if(!a){toast("השם הזה לא מאוחד ידנית – הוא מגיע מאותו שם בדיוק");return}
   if(btn)btn.textContent="מפריד…";
   const r=await sb.from("client_aliases").delete().eq("id",a.id);toast(r.error?"ההפרדה נכשלה":"הופרד");await loadAll();
+}
+
+
+/* ---------- voice: talk, and the app adds tasks / jobs / projects (with a check before saving) ---------- */
+let rec=null,voiceItems=[],voiceHeard="";
+const VT=[["task","משימה"],["job","עבודה"],["project","פרויקט"]];
+const blob64=blob=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(",")[1]||"");r.onerror=no;r.readAsDataURL(blob)});
+function voiceStart(){return `<button class="btn mic" type="button" id="vRec">🎤 התחל הקלטה</button>
+   <div class="f"><label for="vText">או לכתוב / להכתיב במקלדת</label><textarea id="vText" placeholder="מחר בעשר ללכת לברוך פריד להחליף מצלמה…">${esc(voiceHeard)}</textarea></div>
+   <button class="btn ghost" type="button" id="vGo">להבין את הטקסט</button>`}
+function voiceSheet(){
+  const el=$("#sheet");voiceItems=[];voiceHeard="";
+  el.innerHTML=`<form id="edit" novalidate><h3>🎤 לדבר עם האפליקציה</h3>
+   <div class="note">אפשר לדבר חופשי על כמה דברים ביחד: משימות, עבודות שסגרת, פרויקטים. למשל: "מחר בעשר ללכת לברוך פריד להחליף מצלמה. אצל הליגמן קריאת שירות 350 שקל, שילם."</div>
+   <div id="vBody" style="display:grid;gap:10px">${voiceStart()}</div>
+   <div class="actions"><button class="btn ghost" type="button" data-close>סגירה</button></div></form>`;
+  el.hidden=false;const form=$("#edit");form.onsubmit=e=>e.preventDefault();
+  el.onclick=async e=>{
+    if(e.target===el||e.target.closest("[data-close]")){if(rec)stopRec(true);if(voiceItems.length&&!confirm("לסגור בלי לשמור?"))return;el.hidden=true;render();return}
+    if(e.target.closest("#vRec")){toggleRec();return}
+    if(e.target.closest("#vGo")){const t=($("#vText")||{}).value||"";if(!t.trim()){toast("כתוב משהו קודם");return}voiceHeard=t.trim();understand({text:voiceHeard});return}
+    if(e.target.closest("#vAgain")){syncV();voiceItems=[];$("#vBody").innerHTML=voiceStart();return}
+    if(e.target.closest("#vSave")){saveVoice(e.target.closest("#vSave"));return}
+  };
+  el.onchange=e=>{const t=e.target;if(t.dataset&&t.dataset.von!==undefined){syncV();voiceItems[+t.dataset.von].on=t.checked;reviewHtml();return}
+    if(t.dataset&&t.dataset.vk==="type"){syncV();reviewHtml()}};
+}
+async function toggleRec(){
+  if(rec){stopRec(false);return}
+  if(!navigator.mediaDevices||!window.MediaRecorder){toast("ההקלטה לא נתמכת כאן. אפשר להכתיב במקלדת.");return}
+  let stream;try{stream=await navigator.mediaDevices.getUserMedia({audio:true})}catch(e){toast("אין גישה למיקרופון. צריך לאשר מיקרופון, או להכתיב במקלדת.");return}
+  const mime=["audio/mp4","audio/webm;codecs=opus","audio/webm"].find(m=>MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(m))||"";
+  let mr;try{mr=new MediaRecorder(stream,mime?{mimeType:mime}:undefined)}catch(e){mr=new MediaRecorder(stream)}
+  const chunks=[],t0=Date.now();
+  mr.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
+  mr.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());const r=rec;rec=null;if(r)clearInterval(r.timer);if(!r||r.cancel)return;
+    const b=$("#vRec");const blob=new Blob(chunks,{type:mr.mimeType||mime||"audio/mp4"});
+    if(blob.size<1500||Date.now()-t0<900){toast("ההקלטה קצרה מדי");if(b){b.classList.remove("on");b.textContent="🎤 התחל הקלטה"}return}
+    if(b){b.disabled=true;b.classList.remove("on");b.textContent="מכין את ההקלטה…"}
+    let audio="",mt="audio/wav";try{audio=await toWav(blob)}catch(e){audio=await blob64(blob);mt=String(blob.type||"audio/mp4").split(";")[0]}
+    understand({audio,mime:mt})};
+  mr.start(1000);
+  rec={mr,cancel:false,timer:setInterval(()=>{const s=Math.round((Date.now()-t0)/1000),b=$("#vRec");if(b)b.textContent=`⏹ סיום והבנה (${Math.floor(s/60)}:${String(s%60).padStart(2,"0")})`;if(s>=240)stopRec(false)},500)};
+  const b=$("#vRec");if(b){b.classList.add("on");b.textContent="⏹ סיום והבנה (0:00)"}
+}
+function stopRec(cancel){if(!rec)return;rec.cancel=cancel;try{rec.mr.stop()}catch(e){}}
+async function toWav(blob){
+  const AC=window.AudioContext||window.webkitAudioContext,ac=new AC();
+  const ab=await blob.arrayBuffer();
+  const buf=await new Promise((ok,no)=>{const p=ac.decodeAudioData(ab,ok,no);if(p&&p.then)p.then(ok,no)});
+  const rate=16000,len=Math.max(1,Math.ceil(buf.duration*rate));
+  const OAC=window.OfflineAudioContext||window.webkitOfflineAudioContext,off=new OAC(1,len,rate);
+  const src=off.createBufferSource();src.buffer=buf;src.connect(off.destination);src.start(0);
+  const out=await off.startRendering();try{ac.close()}catch(e){}
+  const d=out.getChannelData(0),b=new ArrayBuffer(44+d.length*2),v=new DataView(b);
+  const w=(o,t)=>{for(let i=0;i<t.length;i++)v.setUint8(o+i,t.charCodeAt(i))};
+  w(0,"RIFF");v.setUint32(4,36+d.length*2,true);w(8,"WAVE");w(12,"fmt ");v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+  v.setUint32(24,rate,true);v.setUint32(28,rate*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,"data");v.setUint32(40,d.length*2,true);
+  for(let i=0;i<d.length;i++){const x=Math.max(-1,Math.min(1,d[i]));v.setInt16(44+i*2,x<0?x*0x8000:x*0x7fff,true)}
+  return blob64(new Blob([b],{type:"audio/wav"}));
+}
+async function understand(payload){
+  const vb=$("#vBody");if(!vb)return;vb.innerHTML=`<div class="empty">🤖 מבין מה אמרת…</div>`;
+  const body=Object.assign({},payload,{today:today(),weekday:new Date().toLocaleDateString("he-IL",{weekday:"long"}),clients:clientsAll().map(c=>c.name)});
+  let r=null,err=null;
+  try{const res=await sb.functions.invoke("voice",{body});r=res.data;err=res.error;if(err&&err.context&&err.context.json){try{r=await err.context.json()}catch(x){}}}catch(e){err=e}
+  if(!$("#vBody"))return;
+  if(!r||!r.ok){const msg=(r&&r.message)||(navigator.onLine?"לא הצלחתי להבין. נסה שוב, או כתוב.":"אין אינטרנט כרגע.");
+    $("#vBody").innerHTML=`<div class="note">${esc(msg)}</div>`+voiceStart();return}
+  voiceHeard=String(r.transcript||payload.text||"");
+  const idx=clientsAll();
+  voiceItems=(r.items||[]).map(x=>{const c=x.client&&idx.find(k=>k.name===canon(x.client));
+    if(c&&x.type==="job"){["phone","place","address"].forEach(f=>{if(!x[f]&&c[f])x[f]=c[f]})}
+    return Object.assign({on:true},x)});
+  reviewHtml();
+}
+function vCard(x,i){
+  const f=(k,l,type)=>`<div class="f"><label>${l}</label><input data-vi="${i}" data-vk="${k}" ${type==="number"?'type="number" inputmode="decimal" step="any"':type==="date"?'type="date"':type==="time"?'type="time"':'type="text"'} value="${esc(x[k]??"")}"></div>`;
+  const sel=(k,l,opts)=>`<div class="f"><label>${l}</label><select data-vi="${i}" data-vk="${k}">${opts.map(o=>{const [v,t]=Array.isArray(o)?o:[o,o||"—"];return `<option value="${esc(v)}" ${v===(x[k]??"")?"selected":""}>${esc(t)}</option>`}).join("")}</select></div>`;
+  const main=x.type==="task"?f("title","מה לעשות"):x.type==="job"?f("work","מה בוצע"):f("name","שם הפרויקט");
+  const more=x.type==="job"?`<div class="pair">${sel("kind","סוג",KINDS)}${f("price","מחיר ₪","number")}</div><div class="pair">${sel("paid","שולם?",["לא ידוע","כן","לא","חלקי"])}${f("place","מקום")}</div>`
+    :x.type==="project"?f("address","כתובת"):"";
+  return `<div class="vcard${x.on?"":" off"}"><div class="vhead"><label class="vchk"><input type="checkbox" data-von="${i}" ${x.on?"checked":""}> לשמור</label><select data-vi="${i}" data-vk="type" aria-label="סוג">${VT.map(([v,t])=>`<option value="${v}" ${v===x.type?"selected":""}>${t}</option>`).join("")}</select></div>
+   ${main}<div class="pair">${f("client","לקוח")}${f("date","תאריך","date")}</div>${x.type!=="job"?`<div class="pair">${f("time","שעה","time")}<div></div></div>`:""}${more}${f("notes","הערות")}</div>`;
+}
+function reviewHtml(){
+  const vb=$("#vBody");if(!vb)return;const n=voiceItems.filter(x=>x.on).length;
+  vb.innerHTML=`<div class="note"><b>שמעתי:</b> ${esc(voiceHeard)||"—"}</div>
+   ${voiceItems.length?voiceItems.map(vCard).join(""):`<div class="empty">לא מצאתי משהו להוסיף. נסה שוב ותגיד מה לעשות, אצל מי ומתי.</div>`}
+   ${voiceItems.length?`<button class="btn" type="button" id="vSave" style="padding:14px">שמירה (${n})</button>`:""}
+   <button class="btn ghost" type="button" id="vAgain">🎤 להקליט מחדש</button>`;
+  vb.querySelectorAll('input[data-vk="client"]').forEach(inp=>{try{clientAuto(inp,{elements:{}})}catch(e){}});
+}
+function syncV(){document.querySelectorAll("#vBody [data-vi]").forEach(el=>{const x=voiceItems[+el.dataset.vi];if(x)x[el.dataset.vk]=el.value})}
+async function saveVoice(btn){
+  syncV();const on=voiceItems.filter(x=>x.on);if(!on.length){toast("לא נבחר כלום לשמירה");return}
+  btn.disabled=true;btn.textContent="שומר…";
+  const now=new Date().toISOString(),s=v=>String(v??"").trim(),n=v=>s(v)===""||isNaN(Number(v))?null:Number(v),d=v=>s(v)||null;
+  let ok=0;const bad=[];
+  for(const x of on){let t,r;
+    if(x.type==="job"){t="jobs";r={client:s(x.client)||"ללא שם",work:s(x.work)||s(x.title)||s(x.name),kind:s(x.kind),date:d(x.date),time:d(x.time),price:n(x.price),paid:s(x.paid)||"לא ידוע",paid_amount:n(x.paid_amount),place:s(x.place),address:s(x.address),phone:s(x.phone),notes:s(x.notes)}}
+    else if(x.type==="project"){t="projects";r={name:s(x.name)||s(x.title)||s(x.work)||"פרויקט",client:s(x.client),address:s(x.address),date:d(x.date),time:d(x.time),status:"תכנון",notes:s(x.notes)}}
+    else{t="tasks";r={title:s(x.title)||s(x.work)||s(x.name)||"משימה",client:s(x.client)||null,date:d(x.date),time:d(x.time),notes:s(x.notes),done:"פתוח"}}
+    r.updated_at=now;const res=await sb.from(t).insert(r);if(res.error)bad.push(x);else ok++}
+  if(bad.length){voiceItems=bad;btn.disabled=false;reviewHtml();toast(`נשמרו ${ok}. ${bad.length} לא נשמרו – אפשר לנסות שוב`);await loadAll();return}
+  $("#sheet").hidden=true;voiceItems=[];toast(`✔ נשמרו ${ok}`);await loadAll();render();
 }
 
 /* ---------- edit sheet ---------- */
@@ -1503,6 +1619,7 @@ document.addEventListener("click",async e=>{
   const mg=e.target.closest("[data-merge]");if(mg){mergeClient(mg.dataset.merge,curClient,mg);return}
   if(e.target.closest("#mergeBtn")){const v=$("#mergeSel").value;if(!v){toast("בחר לקוח לאיחוד");return}mergeClient(v,curClient,e.target.closest("#mergeBtn"));return}
   const um=e.target.closest("[data-unmerge]");if(um){unmerge(um.dataset.unmerge,um);return}
+  if(e.target.closest("[data-voice]")){voiceSheet();return}
   const qd=e.target.closest("[data-quote]");if(qd){openQuote(qd.dataset.quote);return}
   const g=e.target.closest("[data-go]");if(g){e.preventDefault();if(g.dataset.f)filt[g.dataset.go]=g.dataset.f;go(g.dataset.go);return}
   const n=e.target.closest("[data-new]");if(n){openSheet(n.dataset.new);return}
