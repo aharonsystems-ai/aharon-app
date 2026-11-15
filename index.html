@@ -255,10 +255,11 @@ const OWED="חייבים לי", isOwed=d=>d.dir===OWED;
 const TAX=["ביטוח לאומי","מס הכנסה",'מע"מ'];
 const DEBT_CATS=["ספק","ביטוח לאומי","מס הכנסה",'מע"מ',"אשראי/הלוואה","אחר"];
 const EXP_CATS=["ציוד","כלי עבודה","דלק ורכב","ביטוח לאומי","מס הכנסה",'מע"מ',"תקשורת","רואת חשבון","עובדים","אחר"];
+const KINDS=["","התקנה","תיקון","קריאת שירות","תחזוקה","אחר"];
 const SCHEMA={
  jobs:{title:"עבודה",fields:[
   ["client","שם לקוח","text",1],["phone","טלפון","tel",0,null,"half"],["place","עסק / מיקום","text",0,null,"half"],["address","כתובת","text"],
-  ["work","פרטי עבודה","textarea"],["date","תאריך עבודה","date",0,null,"half"],["time","שעה","time",0,null,"half"],["price","מחיר גבייה ₪","num",0,null,"half"],["cost","עלויות ₪","num",0,null,"half"],
+  ["kind","סוג","select",0,KINDS],["work","פרטי עבודה","textarea"],["date","תאריך עבודה","date",0,null,"half"],["time","שעה","time",0,null,"half"],["price","מחיר גבייה ₪","num",0,null,"half"],["cost","עלויות ₪","num",0,null,"half"],
   ["profit","רווח בפועל ₪","num",0,null,"half"],["paid","שולם?","select",0,["לא ידוע","כן","לא","חלקי"],"half"],["paid_amount","כמה שולם (חלקי) ₪","num",0,null,"half"],
   ["receipt","הוצאה קבלה?","select",0,["","כן","לא"],"half"],["notes","הערות","textarea"],
   ["nvr_model","דגם","ltr",0,null,"half","מערכת הקלטה (NVR / DVR)"],["nvr_serial","מספר סידורי (S/N)","ltr",0,null,"half"],
@@ -281,8 +282,8 @@ const SCHEMA={
  expenses:{title:"הוצאה",fields:[["date","תאריך","date"],["vendor","ספק / חנות","text",1],["cat","קטגוריה","select",0,EXP_CATS],["amount","סכום כולל ₪","num"],
   ["vat",'מע"מ ששולם ₪',"num"],["kind","סוג הוצאה","select",0,["","קבועה","פרויקט"]],["for_job","עבור לקוח / פרויקט","text"],["qty","כמות","num",0,null,"half"],["unit_price","מחיר ליחידה ₪","num",0,null,"half"],["receipt","יש קבלה?","select",0,["","כן","לא","מזומן"]],["notes","הערות","textarea"]]}
 };
-const data={jobs:[],stock:[],tasks:[],debts:[],expenses:[],morning_docs:[],projects:[],quote_followups:[]};
-let curProject=null,curJob=null;
+const data={jobs:[],stock:[],tasks:[],debts:[],expenses:[],morning_docs:[],projects:[],quote_followups:[],client_aliases:[]};
+let curProject=null,curJob=null,curClient=null,backTo=null;
 let tab="home",q="",filt={},loaded=false,lastSync=null;
 
 const $=s=>document.querySelector(s);
@@ -440,7 +441,7 @@ $("#resetBtn").addEventListener("click",async()=>{
 async function loadAll(){
   $("#status").textContent="טוען…";
   try{
-    const tables=["jobs","stock","tasks","debts","expenses","morning_docs","projects","quote_followups"];
+    const tables=["jobs","stock","tasks","debts","expenses","morning_docs","projects","quote_followups","client_aliases"];
     const all=async t=>{let out=[];for(let from=0;;from+=1000){const r=await sb.from(t).select("*").order(t==="quote_followups"?"doc_id":"id").range(from,from+999);if(r.error)throw r.error;out=out.concat(r.data||[]);if(!r.data||r.data.length<1000)break}return out};
     const res=await Promise.all(tables.map(all));
     res.forEach((rows,i)=>{data[tables[i]]=rows});
@@ -463,7 +464,7 @@ $("#syncBtn").addEventListener("click",async()=>{
 /* ---------- nav ---------- */
 $("#nav").innerHTML=TABS.map(([k,l])=>`<button type="button" data-tab="${k}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>${l}</button>`).join("");
 $("#nav").addEventListener("click",e=>{const b=e.target.closest("button");if(b)go(b.dataset.tab)});
-function go(t){if(t!==tab||curJob||curProject)deeper();if(t!=="projects"||tab==="projects")curProject=null;if(t!=="jobs"||tab==="jobs")curJob=null;tab=t;q="";render();window.scrollTo(0,0)}
+function go(t){if(t!==tab||curJob||curProject||curClient)deeper();backTo=null;if(t!=="projects"||tab==="projects")curProject=null;if(t!=="jobs"||tab==="jobs")curJob=null;if(t!=="clients"||tab==="clients")curClient=null;tab=t;q="";render();window.scrollTo(0,0)}
 
 /* ---------- back: swipe like any app (and the phone's back button) ---------- */
 let navDepth=0;
@@ -473,7 +474,8 @@ function sheetMayClose(){return !sheetDirty()||confirm("יש שינויים של
 function doBack(){
   const sc=document.querySelector(".scan #closeScan");if(sc){sc.click();return true}
   const sh=$("#sheet");if(sh&&!sh.hidden){if(!sheetMayClose())return true;sh.hidden=true;render();return true}
-  if(curJob){curJob=null;render();window.scrollTo(0,0);return true}
+  if(curJob){curJob=null;if(backTo){tab="clients";curClient=backTo;backTo=null}render();window.scrollTo(0,0);return true}
+  if(curClient){curClient=null;render();window.scrollTo(0,0);return true}
   if(curProject){curProject=null;selPt=null;render();window.scrollTo(0,0);return true}
   if(tab!=="home"){tab="home";q="";render();window.scrollTo(0,0);return true}
   return false;
@@ -509,6 +511,7 @@ function render(){
   if(!loaded){m.innerHTML=`<div class="list"><div class="empty">טוען נתונים…</div></div>`;return}
   if(tab==="home"){m.innerHTML=home();return}
   if(tab==="quotes"){m.innerHTML=quotesView();return}
+  if(tab==="clients"){if(curClient){m.innerHTML=clientView();return}m.innerHTML=clientsView();const s=$("#q");if(s){s.value=q;s.oninput=()=>{q=s.value.trim();$("#clist").innerHTML=clientRows()}}return}
   if(tab==="projects"&&curProject){projectView(m);return}
   if(tab==="jobs"&&curJob){jobView(m);return}
   m.innerHTML=listView(tab);
@@ -555,6 +558,7 @@ function home(){
    <button class="tile ${owedSum?'good':''}" data-go="debts" data-f="owed"><span>חייבים לי</span><b>${ils(owedSum)}</b><span>${P.inv.length} חשבוניות · ${P.jobs.length} עבודות · ${P.sheet.length} מהגיליון</span></button>
    <button class="tile ${debtSum?'warn':''}" data-go="debts" data-f="open"><span>אני חייב</span><b>${ils(debtSum)}</b><span>${open.length} חובות פתוחים</span></button>
    <button class="tile ${low.length?'bad':'good'}" data-go="stock" data-f="low"><span>חסר במלאי</span><b>${low.length}</b><span>${data.stock.length} פריטים</span></button>
+   <button class="tile" data-go="clients"><span>לקוחות</span><b>${clientsAll().length}</b><span>עבודות, תשלומים וחובות לכל לקוח</span></button>
    <button class="tile" data-go="tasks"><span>משימות פתוחות</span><b>${tasks.length}</b><span>${tasks.filter(t=>t.date&&t.date<=today()).length} להיום או באיחור</span></button>
   </div>
   <section><div class="sechead"><h2>המשימות שלי</h2><button class="btn ghost" type="button" data-new="tasks">+ משימה</button></div>
@@ -695,7 +699,7 @@ function sorted(k){
 function listView(k){
   const cur=filt[k]||FILTERS[k][0][0];
   const extra=k==="stock"?`<div class="bar"><label class="btn" style="flex:1;text-align:center;cursor:pointer">🤖 צילום מדבקה (AI)<input type="file" accept="image/*" id="aiFile" hidden></label><button class="btn ghost" type="button" id="scanBtn">📷 ברקוד</button></div><div class="bar"><button class="btn ghost" type="button" id="pullItems" style="flex:1">משיכת פריטים מ-Morning</button></div>`:"";
-  return `<div class="bar"><h2 style="flex:1">${TABS.find(t=>t[0]===k)[1]}</h2><button class="btn${k==="stock"?" ghost":""}" type="button" data-new="${k}">+ ${SCHEMA[k].title}</button></div>
+  return `<div class="bar"><h2 style="flex:1">${TABS.find(t=>t[0]===k)[1]}</h2>${k==="jobs"?`<button class="btn ghost" type="button" data-go="clients">לקוחות</button>`:""}<button class="btn${k==="stock"?" ghost":""}" type="button" data-new="${k}">+ ${SCHEMA[k].title}</button></div>
   ${extra}
   <div class="bar"><input id="q" type="search" placeholder="חיפוש" aria-label="חיפוש"></div>
   <div class="filters" role="group" aria-label="סינון">${FILTERS[k].map(([v,l])=>`<button type="button" class="chipbtn" data-filt="${v}" aria-pressed="${v===cur}">${l}</button>`).join("")}</div>
@@ -736,7 +740,7 @@ const heMonth=ym=>{const [y,m]=String(ym).split("-");return HE_M[Number(m)-1]?HE
 const syncNote=()=>`<div class="note" style="margin-top:8px">שורות עם "גיליון" מתעדכנות לבד מהגיליונות פעם בשעה. שינוי סכום עושים בגיליון. סטטוס "שולם" והערות שכתבת כאן נשמרים.</div>`;
 function row(k,x){
   let t="",s="",n="",p="";
-  if(k==="jobs"){const o=owedOf(x);t=x.client||"ללא שם";s=[x.place,x.work,x.date?heDate(x.date):""].filter(Boolean).join(" · ");n=x.price?ils(x.price):"";
+  if(k==="jobs"){const o=owedOf(x);t=x.client||"ללא שם";s=[x.kind,x.place,x.work,x.date?heDate(x.date):""].filter(Boolean).join(" · ");n=x.price?ils(x.price):"";
     p=o>0?(invMatches().has(x.id)?`<span class="pill warn">חשבונית פתוחה ${esc(invMatches().get(x.id).number||"")}</span>`:`<span class="pill bad">חייב ${ils(o)}</span>`):jobDone(x)?`<span class="pill good">בוצע</span>`:x.paid==="כן"?`<span class="pill good">שולם</span>`:`<span class="pill warn">תשלום לא ידוע</span>`;
     const w=warrantyOf(x);if(w)s=(s?s+" · ":"")+(w==="on"?`באחריות עד ${heDate(warrantyEnd(x))}`:"אחריות הסתיימה")}
   if(k==="stock"){const lowv=num(x.min_qty)>0&&num(x.qty)<=num(x.min_qty);t=x.name;s=[x.category,x.brand,x.model,x.sku?'מק"ט '+x.sku:"",x.sell_price?"מכירה "+ils(x.sell_price):"",x.barcode?"ברקוד ✓":""].filter(Boolean).join(" · ");n=`${num(x.qty)} יח׳`;
@@ -786,6 +790,113 @@ async function syncClient(saved,before,isNew){
   const patch={updated_at:new Date().toISOString()};changed.forEach(f=>patch[f]=saved[f]);
   const {error}=await sb.from("jobs").update(patch).in("id",others.map(j=>j.id));
   return error?0:others.length;
+}
+
+
+/* ---------- client card: everything for one client (jobs, service calls, money, tasks, Morning docs) ---------- */
+const CDOC=[300,305,320,330,400,10];
+let _am=null;
+function aliasMap(){if(_am&&_am.src===data.client_aliases)return _am.m;const m=new Map();(data.client_aliases||[]).forEach(a=>m.set(normName(a.alias),normName(a.name)));_am={src:data.client_aliases,m};return m}
+function canon(n){n=normName(n);if(!n)return"";const m=aliasMap();let s=n,i=0;while(m.has(s)&&i++<6)s=m.get(s);return s}
+let _ca=null;
+function clientsAll(){
+  const key=[data.jobs,data.tasks,data.projects,data.morning_docs,data.debts,data.client_aliases];
+  if(_ca&&_ca.key.every((v,i)=>v===key[i]))return _ca.list;
+  const m=new Map();
+  const get=n=>{const k=canon(n);if(!k)return null;if(!m.has(k))m.set(k,{name:k,names:new Set(),jobs:[],tasks:[],projects:[],docs:[],sheet:[],phone:"",place:"",address:"",last:""});const c=m.get(k);c.names.add(normName(n));return c};
+  const seen=(c,d)=>{d=String(d||"").slice(0,10);if(d>c.last)c.last=d};
+  data.jobs.slice().sort((a,b)=>String(a.date||a.created_at||"").localeCompare(String(b.date||b.created_at||""))).forEach(j=>{const c=get(j.client);if(!c)return;c.jobs.push(j);CLIENT_F.forEach(f=>{if(j[f])c[f]=j[f]});seen(c,j.date||j.created_at)});
+  data.tasks.forEach(t=>{const c=get(t.client);if(c){c.tasks.push(t);seen(c,t.date)}});
+  data.projects.forEach(p=>{const c=get(p.client);if(c){c.projects.push(p);if(!c.address&&p.address)c.address=p.address;seen(c,p.date||p.created_at)}});
+  data.morning_docs.filter(d=>CDOC.includes(d.type)).forEach(d=>{const c=get(d.client);if(c){c.docs.push(d);if(!c.phone&&d.client_phone)c.phone=d.client_phone;seen(c,d.doc_date)}});
+  data.debts.filter(d=>isOwed(d)).forEach(d=>{const c=get(d.name);if(c)c.sheet.push(d)});
+  const list=[...m.values()];_ca={key,list};return list;
+}
+function clientMoney(c){
+  const P=owedParts(),mine=n=>canon(n)===c.name;
+  const inv=P.inv.filter(d=>mine(d.client)),jobs=P.jobs.filter(j=>mine(j.client)),sheet=P.sheet.filter(d=>mine(d.name));
+  const owed=inv.reduce((a,d)=>a+num(d.amount),0)+jobs.reduce((a,j)=>a+owedOf(j),0)+sheet.reduce((a,d)=>a+num(d.amount),0);
+  const charged=c.jobs.reduce((a,j)=>a+num(j.price),0);
+  const receipts=c.docs.filter(d=>d.type===320||d.type===400);
+  const paidDocs=receipts.reduce((a,d)=>a+num(d.amount),0);
+  const paidJobs=c.jobs.reduce((a,j)=>a+(j.paid==="כן"?num(j.price):j.paid==="חלקי"?num(j.paid_amount):0),0);
+  return {inv,jobs,sheet,owed,charged,paidDocs,paidJobs,receipts};
+}
+function clientRows(){
+  const f=filt.clients||"recent";
+  let a=clientsAll().filter(c=>!q||[...c.names].join(" ").includes(q)||String(c.phone).includes(q)||String(c.place).includes(q));
+  if(f==="owe")a=a.filter(c=>clientMoney(c).owed>0);
+  if(f==="jobs")a=a.filter(c=>c.jobs.length);
+  if(f==="owe")a.sort((x,y)=>clientMoney(y).owed-clientMoney(x).owed);
+  else if(f==="az")a.sort((x,y)=>x.name.localeCompare(y.name,"he"));
+  else a.sort((x,y)=>String(y.last).localeCompare(String(x.last)));
+  if(!a.length)return `<div class="empty">${q?"לא נמצא לקוח בשם הזה.":"אין לקוחות כאן."}</div>`;
+  return a.map(c=>{const M=clientMoney(c),other=[...c.names].filter(n=>n!==c.name);
+    const s=[c.jobs.length?`${c.jobs.length} עבודות`:"",c.tasks.filter(t=>t.done!=="בוצע").length?`${c.tasks.filter(t=>t.done!=="בוצע").length} משימות`:"",c.last?heDate(c.last):"",c.phone,other.length?"גם: "+other.join(", "):""].filter(Boolean).join(" · ");
+    return `<button type="button" class="row" data-client="${esc(c.name)}"><span class="t">${esc(c.name)}</span><span class="n">${M.owed>0?ils(M.owed):""}</span><span class="s">${esc(s)}</span><span class="p">${M.owed>0?`<span class="pill bad">חייב</span>`:M.charged||M.paidDocs?`<span class="pill good">מסודר</span>`:`<span class="pill">הצעה בלבד</span>`}</span></button>`}).join("");
+}
+function clientsView(){
+  const cur=filt.clients||"recent";
+  return `<div class="bar"><h2 style="flex:1">לקוחות</h2><button class="btn ghost" type="button" data-go="home">חזרה</button></div>
+  <div class="bar"><input id="q" type="search" placeholder="חיפוש לפי שם, טלפון או מקום" aria-label="חיפוש"></div>
+  <div class="filters" role="group" aria-label="סינון">${[["recent","אחרונים"],["owe","חייבים"],["jobs","עם עבודות"],["az","א–ת"]].map(([v,l])=>`<button type="button" class="chipbtn" data-filt="${v}" aria-pressed="${v===cur}">${l}</button>`).join("")}</div>
+  <div class="list" id="clist">${clientRows()}</div>
+  <div class="note" style="margin-top:8px">אותו לקוח בכמה שמות (למשל שם אישי ושם המוסד)? נכנסים לכרטיס ולוחצים "איחוד".</div>`;
+}
+function likeName(a,b){a=normName(a);b=normName(b);if(!a||!b||a===b)return false;const [sh,lo]=a.length<b.length?[a,b]:[b,a];return sh.split(" ").length>=2&&lo.includes(sh)}
+function clientView(){
+  const all=clientsAll(),c=all.find(x=>x.name===curClient);
+  if(!c)return `<div class="bar"><button class="btn ghost" type="button" data-go="clients">→ לקוחות</button></div><div class="empty">הלקוח לא נמצא.</div>`;
+  const M=clientMoney(c),other=[...c.names].filter(n=>n!==c.name);
+  const jobs=c.jobs.slice().sort((a,b)=>String(b.date||b.created_at||"").localeCompare(String(a.date||a.created_at||"")));
+  const kinds={};jobs.forEach(j=>{const k=j.kind||"לא סומן";kinds[k]=(kinds[k]||0)+1});
+  const openT=c.tasks.filter(t=>t.done!=="בוצע").sort((a,b)=>(a.date||"9").localeCompare(b.date||"9")),doneT=c.tasks.length-openT.length;
+  const docs=c.docs.slice().sort((a,b)=>String(b.doc_date).localeCompare(String(a.doc_date)));
+  const nvr=jobs.find(j=>j.nvr_model||j.nvr_serial||j.nvr_user||j.nvr_ip);
+  const ph9=String(c.phone||"").replace(/\D/g,"").slice(-9);
+  const sugg=all.filter(x=>x!==c&&(likeName(x.name,c.name)||[...x.names].some(n=>likeName(n,c.name))||(ph9.length===9&&String(x.phone||"").replace(/\D/g,"").slice(-9)===ph9))).slice(0,5);
+  const wa=waPhone(c.phone);
+  const paidLine=M.paidDocs?`<div class="sum plain"><span>שילם (קבלות ב־Morning, ${M.receipts.length})</span><span>${ils(M.paidDocs)}</span></div>`+(M.paidJobs&&Math.abs(M.paidJobs-M.paidDocs)>=1?`<div class="sum plain"><span>שולם לפי העבודות</span><span>${ils(M.paidJobs)}</span></div>`:"")
+    :`<div class="sum plain"><span>שילם (לפי העבודות)</span><span>${ils(M.paidJobs)}</span></div>`;
+  const docRowC=d=>`<a class="row" href="${esc(d.url||"#")}" target="_blank" rel="noopener"><span class="t">${esc(d.type_name||"")} ${esc(d.number||"")}</span><span class="n">${ils(d.amount)}</span><span class="s">${heDate(d.doc_date)}${d.description?" · "+esc(d.description):""}</span><span class="p">${d.type===10?`<span class="pill">הצעה</span>`:d.type===320||d.type===400?`<span class="pill good">שולם</span>`:d.status===0?`<span class="pill bad">פתוחה</span>`:`<span class="pill good">סגורה</span>`}</span></a>`;
+  return `<div class="bar"><button class="btn ghost" type="button" data-go="clients">→ לקוחות</button><h2 style="flex:1;min-width:0;overflow-wrap:anywhere">${esc(c.name)}</h2></div>
+  <div class="note">${esc([c.place,c.address,c.phone].filter(Boolean).join(" · "))||"אין עדיין טלפון או כתובת – הם נלקחים מהעבודות."}${other.length?`<br>שמות נוספים: ${other.map(n=>`${esc(n)} <a href="#" data-unmerge="${esc(n)}">(הפרדה)</a>`).join(" · ")}`:""}</div>
+  <div class="bar">${c.phone?`<a class="btn ghost" href="tel:${esc(String(c.phone).replace(/[^\d+]/g,""))}" style="flex:1;text-align:center">📞 חיוג</a>`:""}${wa?`<a class="btn wa" href="https://wa.me/${wa}" target="_blank" rel="noopener" style="flex:1;text-align:center;text-decoration:none">WhatsApp</a>`:""}</div>
+  ${wazeBtn(c.address)}
+  <section class="list" aria-label="כסף">
+   <div class="sum"><span>חייב עכשיו</span><span style="${M.owed>0?"color:var(--bad)":""}">${ils(M.owed)}</span></div>
+   <div class="sum plain"><span>חויב בעבודות (${jobs.length})</span><span>${ils(M.charged)}</span></div>
+   ${paidLine}
+   ${M.inv.length?`<div class="grp"><span>חשבוניות פתוחות ב־Morning</span><span>${ils(M.inv.reduce((a,d)=>a+num(d.amount),0))}</span></div>${M.inv.map(docRowC).join("")}`:""}
+   ${M.jobs.length?`<div class="grp"><span>עבודות שלא שולמו</span><span>${ils(M.jobs.reduce((a,j)=>a+owedOf(j),0))}</span></div>`:""}
+   ${M.sheet.length?`<div class="grp"><span>מהגיליון</span><span>${ils(M.sheet.reduce((a,d)=>a+num(d.amount),0))}</span></div>${M.sheet.map(d=>row("debts",d)).join("")}`:""}
+  </section>
+  <div class="sechead"><h2>עבודות, תיקונים וקריאות שירות (${jobs.length})</h2><button class="btn ghost" type="button" data-cnew="jobs">+ עבודה</button></div>
+  ${jobs.length?`<div class="note" style="margin:6px 0">${Object.entries(kinds).map(([k,n])=>`${esc(k)}: ${n}`).join(" · ")}</div>`:""}
+  <div class="list">${jobs.length?jobs.map(j=>row("jobs",j)).join(""):`<div class="empty">אין עבודות רשומות ללקוח הזה.</div>`}</div>
+  <div class="sechead"><h2>משימות (${openT.length} פתוחות${doneT?` · ${doneT} בוצעו`:""})</h2><button class="btn ghost" type="button" data-cnew="tasks">+ משימה</button></div>
+  <div class="list">${openT.length?openT.map(taskRow).join(""):`<div class="empty">אין משימות פתוחות.</div>`}</div>
+  ${c.projects.length?`<h2>פרויקטים (${c.projects.length})</h2><div class="list">${c.projects.map(p=>row("projects",p)).join("")}</div>`:""}
+  ${nvr?`<h2>מערכת הקלטה</h2><div class="list"><button type="button" class="row" data-open-job="${esc(nvr.id)}"><span class="t">${esc(nvr.nvr_model||"מערכת הקלטה")}</span><span class="n"></span><span class="s">${esc([nvr.nvr_serial?"S/N "+nvr.nvr_serial:"",nvr.nvr_ip,"הסיסמאות בכרטיס העבודה"].filter(Boolean).join(" · "))}</span><span class="p"></span></button></div>`:""}
+  ${docs.length?`<h2>מסמכים ב־Morning (${docs.length})</h2><div class="list">${docs.map(docRowC).join("")}</div>`:""}
+  <h2>איחוד עם לקוח אחר</h2>
+  ${sugg.length?`<div class="note">אולי זה אותו לקוח:</div><div class="list">${sugg.map(x=>`<div class="row" style="cursor:default"><span class="t">${esc(x.name)}</span><span class="n"></span><span class="s">${esc([x.jobs.length?x.jobs.length+" עבודות":"",x.phone].filter(Boolean).join(" · "))}</span><span class="p"><button class="btn ghost" type="button" data-merge="${esc(x.name)}">איחוד</button></span></div>`).join("")}</div>`:""}
+  <div class="bar"><select id="mergeSel" style="flex:1;min-width:0"><option value="">— בחר לקוח שהוא אותו לקוח —</option>${all.filter(x=>x!==c).sort((a,b)=>a.name.localeCompare(b.name,"he")).map(x=>`<option>${esc(x.name)}</option>`).join("")}</select><button class="btn ghost" type="button" id="mergeBtn">איחוד</button></div>
+  <div class="note" style="font-size:12.5px">איחוד לא משנה שמות ב־Morning או בגיליונות – רק מציג את הכל כאן תחת לקוח אחד. אפשר להפריד בחזרה.</div>`;
+}
+async function mergeClient(from,into,btn){
+  from=canon(from);into=canon(into);if(!from||!into||from===into)return;
+  if(btn){btn.disabled=true;btn.textContent="מאחד…"}
+  const moved=(data.client_aliases||[]).filter(a=>normName(a.name)===from).map(a=>a.id);
+  if(moved.length){const r=await sb.from("client_aliases").update({name:into}).in("id",moved);if(r.error){toast("האיחוד נכשל");if(btn)btn.disabled=false;return}}
+  const r=await sb.from("client_aliases").upsert({alias:from,name:into},{onConflict:"alias"});
+  if(r.error){toast("האיחוד נכשל");if(btn)btn.disabled=false;return}
+  toast(`${from} אוחד עם ${into}`);await loadAll();
+}
+async function unmerge(alias,btn){
+  const a=(data.client_aliases||[]).find(x=>normName(x.alias)===normName(alias));if(!a){toast("השם הזה לא מאוחד ידנית – הוא מגיע מאותו שם בדיוק");return}
+  if(btn)btn.textContent="מפריד…";
+  const r=await sb.from("client_aliases").delete().eq("id",a.id);toast(r.error?"ההפרדה נכשלה":"הופרד");await loadAll();
 }
 
 /* ---------- edit sheet ---------- */
@@ -846,7 +957,7 @@ function openSheet(k,id,prefill,note){
     if(k==="jobs"&&!link&&res.data){const nUp=await syncClient(res.data,id?x:{},!id);if(nUp)extra=` · עודכן גם ב־${nUp} עבודות של ${normName(res.data.client)}`}
     toast("נשמר"+extra);el.hidden=true;await loadAll();
     if(k==="projects"&&!id&&res.data){curProject=res.data.id;render()}
-    if(k==="jobs"&&!id&&res.data){curJob=res.data.id;render()}
+    if(k==="jobs"&&!id&&res.data){if(tab==="clients"&&curClient){backTo=curClient;tab="jobs"}curJob=res.data.id;render()}
   };
 }
 
@@ -882,7 +993,7 @@ async function jobView(m){
   const doc=data.morning_docs.find(d=>d.id===j.morning_doc_id);
   const opt=d=>`<option value="${esc(d.id)}" ${d.id===j.morning_doc_id?"selected":""}>${esc(d.type_name)} ${esc(d.number)} · ${esc(d.client||"")} · ${ils(d.amount)} · ${heDate(d.doc_date)}</option>`;
   const o=owedOf(j);
-  m.innerHTML=`<div class="bar"><button class="btn ghost" type="button" id="backJob">→ עבודות</button><h2 style="flex:1;min-width:0;overflow-wrap:anywhere">${esc(j.client||"עבודה")}</h2><button class="btn ghost" type="button" data-edit="jobs" data-id="${esc(j.id)}">פרטים</button></div>
+  m.innerHTML=`<div class="bar"><button class="btn ghost" type="button" id="backJob">→ עבודות</button><h2 style="flex:1;min-width:0;overflow-wrap:anywhere">${j.client?`<a href="#" data-client="${esc(canon(j.client))}">${esc(j.client)}</a>`:"עבודה"}</h2><button class="btn ghost" type="button" data-edit="jobs" data-id="${esc(j.id)}">פרטים</button></div>
    <div class="note">${esc([j.place,j.address,j.date?heDate(j.date):"",j.phone].filter(Boolean).join(" · "))||"—"}${j.price?` · ${ils(j.price)}`:""} ${o>0?`<span class="pill bad">חייב ${ils(o)}</span>`:j.paid==="כן"?`<span class="pill good">שולם</span>`:""}</div>
    ${wazeBtn(j.address)}
 
@@ -1361,8 +1472,8 @@ document.addEventListener("click",async e=>{
   if(e.target.closest("#logout")){try{localStorage.removeItem(FID);localStorage.removeItem("aharon-app-data")}catch(x){}await sb.auth.signOut();return}
   if(e.target.closest("#faceToggle")){if(getFid()){try{localStorage.removeItem(FID)}catch(x){}toast("Face ID כובה")}else if(await canFaceId()){await enableFaceId()}else toast("המכשיר הזה לא תומך ב-Face ID");render();return}
   if(e.target.closest("#backProj")){curProject=null;selPt=null;render();return}
-  if(e.target.closest("#backJob")){curJob=null;render();return}
-  const oj=e.target.closest("[data-open-job]");if(oj){deeper();curJob=oj.dataset.openJob;tab="jobs";render();window.scrollTo(0,0);return}
+  if(e.target.closest("#backJob")){curJob=null;if(backTo){tab="clients";curClient=backTo;backTo=null}render();return}
+  const oj=e.target.closest("[data-open-job]");if(oj){deeper();backTo=(tab==="clients"&&curClient)?curClient:null;curJob=oj.dataset.openJob;tab="jobs";render();window.scrollTo(0,0);return}
   if(e.target.closest("#signBtn")){signaturePad(curJ());return}
   const ph=e.target.closest("[data-photo]");if(ph){photoSheet(curJ(),+ph.dataset.photo);return}
   if(e.target.closest("#shareReport")){shareReport(curJ());return}
@@ -1378,6 +1489,11 @@ document.addEventListener("click",async e=>{
     toast(error?"לא נשמר. נסה שוב.":"✔ המשימה בוצעה");await loadAll();return}
   if(e.target.closest("#pickQuote")){e.preventDefault();pickQuote(curP());return}
   if(e.target.closest("#projJob")){jobFromProject(curP(),e.target.closest("#projJob"));return}
+  const cl=e.target.closest("[data-client]");if(cl){e.preventDefault();deeper();curClient=cl.dataset.client;curJob=null;curProject=null;backTo=null;tab="clients";q="";render();window.scrollTo(0,0);return}
+  const nj=e.target.closest("[data-cnew]");if(nj){const c=clientsAll().find(x=>x.name===curClient)||{name:curClient};openSheet(nj.dataset.cnew,null,nj.dataset.cnew==="jobs"?{client:c.name,phone:c.phone||"",place:c.place||"",address:c.address||""}:{client:c.name});return}
+  const mg=e.target.closest("[data-merge]");if(mg){mergeClient(mg.dataset.merge,curClient,mg);return}
+  if(e.target.closest("#mergeBtn")){const v=$("#mergeSel").value;if(!v){toast("בחר לקוח לאיחוד");return}mergeClient(v,curClient,e.target.closest("#mergeBtn"));return}
+  const um=e.target.closest("[data-unmerge]");if(um){unmerge(um.dataset.unmerge,um);return}
   const qd=e.target.closest("[data-quote]");if(qd){openQuote(qd.dataset.quote);return}
   const g=e.target.closest("[data-go]");if(g){e.preventDefault();if(g.dataset.f)filt[g.dataset.go]=g.dataset.f;go(g.dataset.go);return}
   const n=e.target.closest("[data-new]");if(n){openSheet(n.dataset.new);return}
