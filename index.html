@@ -819,8 +819,9 @@ function clientMoney(c){
   const charged=c.jobs.reduce((a,j)=>a+num(j.price),0);
   const receipts=c.docs.filter(d=>d.type===320||d.type===400);
   const paidDocs=receipts.reduce((a,d)=>a+num(d.amount),0);
+  const invoiced=c.docs.filter(d=>d.type===305||d.type===320).reduce((a,d)=>a+num(d.amount),0);
   const paidJobs=c.jobs.reduce((a,j)=>a+(j.paid==="כן"?num(j.price):j.paid==="חלקי"?num(j.paid_amount):0),0);
-  return {inv,jobs,sheet,owed,charged,paidDocs,paidJobs,receipts};
+  return {inv,jobs,sheet,owed,charged,paidDocs,paidJobs,receipts,invoiced};
 }
 function clientRows(){
   const f=filt.clients||"recent";
@@ -861,7 +862,7 @@ function clientView(){
   const docs=c.docs.slice().sort((a,b)=>String(b.doc_date).localeCompare(String(a.doc_date)));
   const nvr=jobs.find(j=>j.nvr_model||j.nvr_serial||j.nvr_user||j.nvr_ip);
   const ph9=String(c.phone||"").replace(/\D/g,"").slice(-9);
-  const sugg=all.filter(x=>x!==c&&(likeName(x.name,c.name)||[...x.names].some(n=>likeName(n,c.name))||(ph9.length===9&&String(x.phone||"").replace(/\D/g,"").slice(-9)===ph9))).slice(0,5);
+  const sugg=all.filter(x=>x!==c&&([...x.names].some(n=>[...c.names].some(m=>likeName(n,m)))||(ph9.length===9&&String(x.phone||"").replace(/\D/g,"").slice(-9)===ph9))).slice(0,5);
   const wa=waPhone(c.phone);
   const paidLine=M.paidDocs?`<div class="sum plain"><span>שילם (קבלות ב־Morning, ${M.receipts.length})</span><span>${ils(M.paidDocs)}</span></div>`+(M.paidJobs&&Math.abs(M.paidJobs-M.paidDocs)>=1?`<div class="sum plain"><span>שולם לפי העבודות</span><span>${ils(M.paidJobs)}</span></div>`:"")
     :`<div class="sum plain"><span>שילם (לפי העבודות)</span><span>${ils(M.paidJobs)}</span></div>`;
@@ -872,7 +873,8 @@ function clientView(){
   ${wazeBtn(c.address)}
   <section class="list" aria-label="כסף">
    <div class="sum"><span>חייב עכשיו</span><span style="${M.owed>0?"color:var(--bad)":""}">${ils(M.owed)}</span></div>
-   <div class="sum plain"><span>חויב בעבודות (${jobs.length})</span><span>${ils(M.charged)}</span></div>
+   ${M.invoiced?`<div class="sum plain"><span>חשבוניות ב־Morning</span><span>${ils(M.invoiced)}</span></div>`:""}
+   <div class="sum plain"><span>רשום בעבודות באפליקציה (${jobs.length})</span><span>${ils(M.charged)}</span></div>
    ${paidLine}
    ${M.inv.length?`<div class="grp"><span>חשבוניות פתוחות ב־Morning</span><span>${ils(M.inv.reduce((a,d)=>a+num(d.amount),0))}</span></div>${M.inv.map(docRowC).join("")}`:""}
    ${M.jobs.length?`<div class="grp"><span>עבודות שלא שולמו</span><span>${ils(M.jobs.reduce((a,j)=>a+owedOf(j),0))}</span></div>`:""}
