@@ -833,7 +833,14 @@ function clientRows(){
   if(!a.length)return `<div class="empty">${q?"לא נמצא לקוח בשם הזה.":"אין לקוחות כאן."}</div>`;
   return a.map(c=>{const M=clientMoney(c),other=[...c.names].filter(n=>n!==c.name);
     const s=[c.jobs.length?`${c.jobs.length} עבודות`:"",c.tasks.filter(t=>t.done!=="בוצע").length?`${c.tasks.filter(t=>t.done!=="בוצע").length} משימות`:"",c.last?heDate(c.last):"",c.phone,other.length?"גם: "+other.join(", "):""].filter(Boolean).join(" · ");
-    return `<button type="button" class="row" data-client="${esc(c.name)}"><span class="t">${esc(c.name)}</span><span class="n">${M.owed>0?ils(M.owed):""}</span><span class="s">${esc(s)}</span><span class="p">${M.owed>0?`<span class="pill bad">חייב</span>`:M.charged||M.paidDocs?`<span class="pill good">מסודר</span>`:`<span class="pill">הצעה בלבד</span>`}</span></button>`}).join("");
+    return `<button type="button" class="row" data-client="${esc(c.name)}"><span class="t">${esc(c.name)}</span><span class="n">${M.owed>0?ils(M.owed):""}</span><span class="s">${esc(s)}</span><span class="p">${clientPill(c,M)}</span></button>`}).join("");
+}
+function clientPill(c,M){
+  if(M.owed>0)return `<span class="pill bad">חייב</span>`;
+  if(c.jobs.some(j=>!j.paid||j.paid==="לא ידוע"))return `<span class="pill warn">תשלום לא ידוע</span>`;
+  if(M.charged||M.paidDocs||c.docs.some(d=>d.type!==10))return `<span class="pill good">מסודר</span>`;
+  if(c.docs.length)return `<span class="pill">הצעה בלבד</span>`;
+  return "";
 }
 function clientsView(){
   const cur=filt.clients||"recent";
