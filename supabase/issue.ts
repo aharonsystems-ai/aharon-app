@@ -1,0 +1,275 @@
+// issue: invoice + warranty certificate for a finished job.
+//  App (owner's Supabase login):
+//   - "next"     → next free warranty number
+//   - "preview"  → invoice preview from Morning (nothing is issued) + filled warranty PDF
+//   - "issue"    → issues the invoice in Morning (Morning does NOT email it), fills the warranty,
+//                  and emails ONE mail from the owner's Gmail with both PDFs attached
+//   - "send"     → same mail for a job whose invoice already exists in Morning (or warranty only)
+//  Gmail Apps Script (owner's Google token):
+//   - "mailer"   → registers the script's web-app URL + secret that sends the mail
+// Deploy with "Verify JWT" OFF (the Gmail script calls with a Google token); the owner check is below.
+import { createClient } from "npm:@supabase/supabase-js@2";
+import * as PDFLib from "npm:pdf-lib@1.17.1";
+import fontkit from "npm:@pdf-lib/fontkit@1.1.1";
+
+const OWNER = "aharonsystems@gmail.com";
+const ASSETS = "https://aharonsystems-ai.github.io/aharon-app/assets/";
+const API = "https://api.greeninvoice.co.il/api/v1";
+const VAT = 0.18;
+const cors = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"};
+const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), {status: s, headers: {...cors, "Content-Type": "application/json"}});
+const TYPES: Record<number, string> = {305: "חשבונית מס", 320: "חשבונית מס קבלה", 400: "קבלה", 300: "חשבון עסקה", 10: "הצעת מחיר"};
+const PAY: Record<number, string> = {1: "מזומן", 2: "צ'ק", 4: "העברה בנקאית", 10: "אפליקציית תשלום (ביט / פייבוקס)"};
+const round2 = (n: number) => Math.round(n * 100) / 100;
+function bytesToB64(u: Uint8Array) { let s = ""; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000)); return btoa(s); }
+function b64ToBytes(b64: string) { const s = atob(b64); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
+const heDate = (iso: string) => { const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : ""; };
+const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"} as any)[c]);
+const fname = (s: string) => String(s).replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
+
+/* ---------- Morning ---------- */
+async function morningToken(): Promise<string> {
+  const id = Deno.env.get("MORNING_ID"), secret = Deno.env.get("MORNING_SECRET");
+  if (!id || !secret) throw new Error("חסר מפתח Morning");
+  let r = await fetch("https://api.morning.co/idp/v1/oauth/token", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({grant_type: "client_credentials", client_id: id, client_secret: secret})});
+  if (r.ok) { const d = await r.json(); if (d.accessToken) return d.accessToken; }
+  r = await fetch(API + "/account/token", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({id, secret})});
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || !d.token) throw new Error("Morning דחה את המפתח (" + r.status + ")");
+  return d.token;
+}
+async function mcall(tok: string, method: string, path: string, body?: unknown) {
+  const r = await fetch(API + path, {method, headers: {"Content-Type": "application/json", Authorization: "Bearer " + tok}, body: body ? JSON.stringify(body) : undefined});
+  const t = await r.text(); let d: any = {}; try { d = JSON.parse(t); } catch (_) { d = {raw: t}; }
+  if (!r.ok) throw new Error("Morning: " + (d.errorMessage || d.message || t.slice(0, 200) || r.status));
+  return d;
+}
+async function findClient(tok: string, name: string) {
+  try {
+    const d = await mcall(tok, "POST", "/clients/search", {name, page: 1, pageSize: 20});
+    const n = (s: string) => String(s || "").replace(/["'״׳]/g, "").replace(/\s+/g, " ").trim();
+    return (d.items || []).find((c: any) => n(c.name) === n(name)) || null;
+  } catch (_) { return null; }
+}
+type Line = {description: string; quantity: number; price: number};
+function docBody(b: any, client: any) {
+  const type = [305, 320].includes(Number(b.type)) ? Number(b.type) : 305;
+  const incl = !!b.vat_included;
+  const lines: Line[] = (b.lines || []).map((l: any) => ({description: String(l.description || "").trim(), quantity: Number(l.quantity) || 1, price: Number(l.price) || 0}))
+    .filter((l: Line) => l.description && l.price);
+  if (!lines.length) throw new Error("צריך לפחות שורה אחת עם תיאור ומחיר");
+  const net = lines.reduce((s, l) => s + l.quantity * l.price, 0);
+  const total = round2(incl ? net : net * (1 + VAT));
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(b.date || "")) ? String(b.date) : new Date().toISOString().slice(0, 10);
+  const body: any = {type, date, lang: "he", currency: "ILS", vatType: 0, rounding: false, signed: true, attachment: false,
+    description: String(b.description || "").slice(0, 200) || undefined, remarks: b.remarks ? String(b.remarks).slice(0, 500) : undefined,
+    client: client?.id ? {id: client.id, name: client.name, emails: b.email ? [b.email] : (client.emails || []), add: false}
+      : {name: b.client, emails: b.email ? [b.email] : [], phone: b.phone || undefined, mobile: b.phone || undefined, address: b.address || undefined, add: true},
+    income: lines.map(l => ({description: l.description, quantity: l.quantity, price: l.price, currency: "ILS", vatType: incl ? 1 : 0}))};
+  if (type === 320) body.payment = [{type: PAY[Number(b.pay_type)] ? Number(b.pay_type) : 4, date, price: total, currency: "ILS"}];
+  return {body, total, type};
+}
+async function docPdf(tok: string, id: string, known?: any): Promise<{bytes: Uint8Array; number: string; type: number; url: string}> {
+  let d = known;
+  if (!d?.number) d = await mcall(tok, "GET", "/documents/" + id);
+  let url = d?.url?.he || d?.url?.origin || "";
+  if (!url) { const l = await mcall(tok, "GET", `/documents/${id}/download/links`); url = l.he || l.origin || ""; }
+  if (!url) throw new Error("Morning לא נתן קישור ל-PDF של המסמך");
+  for (let i = 0; i < 4; i++) {
+    const r = await fetch(url);
+    if (r.ok && (r.headers.get("content-type") || "").includes("pdf")) return {bytes: new Uint8Array(await r.arrayBuffer()), number: String(d.number ?? ""), type: d.type, url};
+    await new Promise(ok => setTimeout(ok, 1500));
+  }
+  throw new Error("לא הצלחתי להוריד את ה-PDF של החשבונית מ-Morning");
+}
+
+/* ---------- warranty PDF ---------- */
+const W_LAYOUT: any = {
+  no: [316.9, 236, 85, 29.5],
+  f: {client: [410, 343, 223.6], date: [74, 343, 202.3], address: [410, 376.5, 191.8], phone: [74, 376.5, 257],
+      details: [55, 531.5, 583.3], details2: [55, 558.5, 583.3], doc: [55, 587.5, 372.6], installer: [414.5, 885.5, 207.7], clientSig: [55, 885.5, 215.4]},
+  cb: {"מצלמות אבטחה": [704, 456.25], "מערכת אזעקה": [477.3, 456.25], "אינטרקום ובקרת כניסה": [250.7, 456.25],
+       "רשת ותקשורת / WiFi": [704, 485.75], "הגברה ואודיו": [477.3, 485.75], "מגבר קליטה סלולרי": [250.7, 485.75]},
+};
+function visual(s: unknown) {
+  // fontkit lays out a Hebrew string right-to-left by reversing the whole run: pre-reverse the LTR chunks (numbers, Latin) and mirror brackets
+  const t = String(s ?? "").replace(/\s+/g, " ").trim();
+  if (!/[֐-׿]/.test(t)) return t;
+  const mir: Record<string, string> = {"(": ")", ")": "(", "[": "]", "]": "[", "<": ">", ">": "<"};
+  return t.replace(/[A-Za-z0-9](?:[A-Za-z0-9@._\-\/:+,' ]*[A-Za-z0-9])?/g, x => [...x].reverse().join("")).replace(/[()[\]<>]/g, c => mir[c]);
+}
+let assets: {tpl: Uint8Array; font: Uint8Array} | null = null;
+async function loadAssets() {
+  if (assets) return assets;
+  const get = async (n: string) => { const r = await fetch(ASSETS + n); if (!r.ok) throw new Error("חסר קובץ " + n + " (" + r.status + ")"); return new Uint8Array(await r.arrayBuffer()); };
+  const [tpl, font] = await Promise.all([get("warranty-template.pdf"), get("Heebo-700.ttf")]);
+  return (assets = {tpl, font});
+}
+async function fillWarranty(d: any, sigBytes?: Uint8Array | null) {
+  const {tpl, font: fontBytes} = await loadAssets();
+  const {PDFDocument, rgb} = PDFLib as any;
+  const doc = await PDFDocument.load(tpl); doc.registerFontkit(fontkit);
+  const font = await doc.embedFont(fontBytes, {subset: true});
+  const pg = doc.getPages()[0]; const H = pg.getHeight(); const k = 0.75;
+  const navy = rgb(0.06, 0.16, 0.36), red = rgb(0.753, 0.224, 0.169), blue = rgb(0.11, 0.55, 0.82);
+  const put = (key: string, text: unknown, size = 12.5) => {
+    const r = W_LAYOUT.f[key]; if (!r || !String(text ?? "").trim()) return;
+    const v = visual(text); let s = size; const maxW = r[2] * k - 6;
+    while (s > 7 && font.widthOfTextAtSize(v, s) > maxW) s -= 0.5;
+    pg.drawText(v, {x: (r[0] + r[2]) * k - 3 - font.widthOfTextAtSize(v, s), y: H - r[1] * k + 3.5, size: s, font, color: navy});
+  };
+  if (d.no) {
+    const t = String(d.no), s = 16, w = font.widthOfTextAtSize(t, s) + (t.length - 1) * 1.5;
+    const cx = (W_LAYOUT.no[0] + W_LAYOUT.no[2] / 2) * k, cy = H - (W_LAYOUT.no[1] + W_LAYOUT.no[3] / 2) * k;
+    let x = cx - w / 2; for (const ch of t) { pg.drawText(ch, {x, y: cy - s * 0.36, size: s, font, color: red}); x += font.widthOfTextAtSize(ch, s) + 1.5; }
+  }
+  put("client", d.client); put("date", d.date); put("address", d.address); put("phone", d.phone);
+  if (d.details) {
+    const words = String(d.details).replace(/\s+/g, " ").trim().split(" "); const maxW = W_LAYOUT.f.details[2] * k - 6;
+    let l1 = "", i = 0;
+    for (; i < words.length; i++) { const t = (l1 ? l1 + " " : "") + words[i]; if (font.widthOfTextAtSize(visual(t), 12) > maxW) break; l1 = t; }
+    put("details", l1 || d.details, 12); if (i < words.length) put("details2", words.slice(i).join(" "), 12);
+  }
+  put("doc", d.docRef); put("installer", d.installer || "אהרן לוי לוין");
+  for (const name of d.items || []) {
+    const c = W_LAYOUT.cb[name]; if (!c) continue;
+    pg.drawSvgPath("M 3 7.5 L 6.2 11 L 12 3.5", {x: c[0] * k + 0.3, y: H - c[1] * k - 0.6, borderColor: blue, borderWidth: 2.4});
+  }
+  if (sigBytes) {
+    try {
+      const img = await doc.embedPng(sigBytes); const r = W_LAYOUT.f.clientSig; const hh = 30, ww = Math.min(r[2] * k - 6, img.width * hh / img.height);
+      pg.drawImage(img, {x: (r[0] + r[2]) * k - 3 - ww, y: H - r[1] * k + 1, width: ww, height: hh});
+    } catch (_) { /* signature is optional */ }
+  }
+  doc.setTitle("תעודת אחריות " + (d.no || "")); doc.setAuthor("אהרן מערכות");
+  return new Uint8Array(await doc.save());
+}
+
+/* ---------- mail (owner's Gmail via the Apps Script web app) ---------- */
+function mailHtml(o: {first: string; docName: string; wNo: string; summary: string; payLink?: string}) {
+  const parts = [o.docName, o.wNo ? "תעודת אחריות מספר " + o.wNo : ""].filter(Boolean);
+  return `<div dir="rtl" style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#0f2a5c">
+שלום ${esc(o.first)},<br>תודה שבחרת באהרן מערכות.<br><br>
+מצורפים למייל: ${esc(parts.join(" ו"))}.<br>
+${o.summary ? `<br><b>סיכום העבודה:</b><br>${esc(o.summary).replace(/\n/g, "<br>")}<br>` : ""}
+${o.wNo ? `<br>האחריות על עבודת ההתקנה היא ל-12 חודשים. כדאי לשמור את התעודה.<br>` : ""}
+${o.payLink ? `<br>לתשלום: <a href="${esc(o.payLink)}">${esc(o.payLink)}</a><br>` : ""}
+<br>לכל שאלה אני זמין.<br><br><b>אהרן מערכות</b> – אבטחה ותקשורת בידיים טובות<br>055-975-9822 · <a href="https://aharonsystems.com">aharonsystems.com</a></div>`;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", {headers: cors});
+  let key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!key) { try { key = Object.values(JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") || "{}"))[0] as string; } catch (_) { /* none */ } }
+  const sb = createClient(Deno.env.get("SUPABASE_URL")!, key);
+  const tok = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+  let caller = "";
+  if (tok.startsWith("ya29.")) {
+    const r = await fetch("https://oauth2.googleapis.com/tokeninfo?access_token=" + encodeURIComponent(tok));
+    const info = await r.json().catch(() => ({}));
+    if (r.ok && info.email === OWNER && String(info.email_verified) === "true") caller = "script";
+  } else if (tok) {
+    const {data: u} = await sb.auth.getUser(tok);
+    if (u?.user?.email === OWNER) caller = "app";
+  }
+  if (!caller) return json({ok: false, message: "אין הרשאה"}, 401);
+  const b = await req.json().catch(() => ({}));
+  const action = String(b.action || "");
+  const setting = async (k: string) => (await sb.from("app_settings").select("value").eq("key", k).maybeSingle()).data?.value || "";
+  try {
+    if (action === "mailer") {
+      if (caller !== "script") return json({ok: false, message: "אין הרשאה"}, 401);
+      const now = new Date().toISOString();
+      await sb.from("app_settings").upsert([{key: "mailer_url", value: String(b.url || ""), updated_at: now}, {key: "mailer_secret", value: String(b.secret || ""), updated_at: now}]);
+      return json({ok: true});
+    }
+    if (caller !== "app") return json({ok: false, message: "אין הרשאה"}, 401);
+
+    if (action === "next") {
+      const {data} = await sb.from("jobs").select("warranty_no").not("warranty_no", "is", null);
+      const nums = (data || []).map((r: any) => Number(String(r.warranty_no).replace(/\D/g, ""))).filter((n: number) => n >= 100001 && n < 200000);
+      return json({ok: true, next: String(nums.length ? Math.max(...nums) + 1 : 100001)});
+    }
+
+    const {data: job, error: je} = await sb.from("jobs").select("*").eq("id", b.job_id).single();
+    if (je || !job) throw new Error("העבודה לא נמצאה");
+    const wNo = String(b.warranty?.no || "").replace(/\D/g, "");
+    if (wNo) {
+      const {data: dup} = await sb.from("jobs").select("id,client").eq("warranty_no", wNo).neq("id", job.id).limit(1);
+      if (dup && dup.length) throw new Error(`תעודה ${wNo} כבר רשומה על ${dup[0].client}`);
+    }
+    const sig = job.signature_path ? await sb.storage.from("jobfiles").download(job.signature_path).then(async r => r.data ? new Uint8Array(await r.data.arrayBuffer()) : null).catch(() => null) : null;
+    const wData = (docRef: string) => ({no: wNo, client: b.client || job.client, date: heDate(b.warranty?.date || job.date || ""), address: b.address ?? job.address ?? job.place,
+      phone: b.phone ?? job.phone, items: b.warranty?.items || [], details: b.warranty?.details ?? job.summary ?? job.work, docRef});
+
+    if (action === "preview") {
+      const out: any = {ok: true};
+      if (b.with_invoice) {
+        const mtok = await morningToken();
+        const {body} = docBody(b, await findClient(mtok, b.client || job.client));
+        const p = await mcall(mtok, "POST", "/documents/preview", body);
+        out.invoice = p.file || p.pdf || p.data || null;
+        if (!out.invoice) throw new Error("Morning לא החזיר תצוגה מקדימה");
+      }
+      if (wNo) out.warranty = bytesToB64(await fillWarranty(wData(b.with_invoice ? (TYPES[Number(b.type)] || "חשבונית") + " (ממתינה למספר)" : ""), sig));
+      return json(out);
+    }
+
+    if (action === "issue" || action === "send") {
+      const to = String(b.email || "").trim();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) throw new Error("צריך כתובת מייל תקינה של הלקוח");
+      const mailUrl = await setting("mailer_url"), mailSecret = await setting("mailer_secret");
+      if (!mailUrl || !mailSecret) throw new Error("שליחת המייל עוד לא מחוברת (סקריפט הג'ימייל)");
+      const now = new Date().toISOString();
+      let inv: {bytes: Uint8Array; number: string; type: number; url: string} | null = null, docId = job.morning_doc_id || null;
+      if (action === "issue") {
+        if (job.morning_doc_id && !b.force) throw new Error("לעבודה הזו כבר מקושרת חשבונית ב-Morning. אפשר לשלוח אותה עם התעודה.");
+        const mtok = await morningToken();
+        const {body, total, type} = docBody(b, await findClient(mtok, b.client || job.client));
+        const created = await mcall(mtok, "POST", "/documents", body);
+        docId = created.id;
+        // the invoice exists now: save the link first, so a mail failure never leads to issuing twice
+        await sb.from("jobs").update({morning_doc_id: docId, receipt: `${TYPES[type]} ${created.number ?? ""}`.trim(), client_email: to,
+          price: job.price ?? round2(total / (1 + VAT)), updated_at: now}).eq("id", job.id);
+        await sb.from("morning_docs").upsert({id: docId, number: String(created.number ?? ""), type, type_name: TYPES[type], status: type === 320 ? 1 : 0,
+          doc_date: body.date, client: body.client.name, description: body.description || body.income[0]?.description || null, amount: total, currency: "ILS",
+          url: created.url?.he || created.url?.origin || null, client_email: to, client_phone: b.phone || job.phone || null, synced_at: now});
+        inv = await docPdf(mtok, docId!, created);
+      } else if (b.with_invoice && docId) {
+        inv = await docPdf(await morningToken(), docId);
+      }
+      const docName = inv ? `${TYPES[inv.type] || "חשבונית"} ${inv.number}`.trim() : "";
+      const files: {path: string; name: string}[] = [];
+      if (inv) {
+        const path = `${job.id}/invoice-${inv.number || docId}.pdf`;
+        await sb.storage.from("jobfiles").upload(path, inv.bytes, {contentType: "application/pdf", upsert: true});
+        files.push({path, name: fname(`${docName} - אהרן מערכות.pdf`)});
+      }
+      let wPath = null;
+      if (wNo) {
+        const wb = await fillWarranty(wData(docName), sig);
+        wPath = `${job.id}/warranty-${wNo}.pdf`;
+        const up = await sb.storage.from("jobfiles").upload(wPath, wb, {contentType: "application/pdf", upsert: true});
+        if (up.error) throw up.error;
+        files.push({path: wPath, name: fname(`תעודת אחריות ${wNo} - אהרן מערכות.pdf`)});
+      }
+      await sb.from("jobs").update({warranty_no: wNo || job.warranty_no || null, warranty_items: b.warranty?.items || job.warranty_items || [], warranty_path: wPath || job.warranty_path,
+        invoice_path: files.find(f => f.path.includes("/invoice-"))?.path || job.invoice_path, client_email: to, updated_at: now}).eq("id", job.id);
+      if (!files.length) throw new Error("אין מה לשלוח");
+      const att = [];
+      for (const f of files) { const {data: u} = await sb.storage.from("jobfiles").createSignedUrl(f.path, 900); att.push({url: u?.signedUrl, name: f.name}); }
+      const first = String(b.client || job.client || "").trim().split(/\s+/)[0] || "";
+      const subject = [docName, wNo ? "תעודת אחריות " + wNo : ""].filter(Boolean).join(" ו") + " – אהרן מערכות";
+      const mr = await fetch(mailUrl, {method: "POST", headers: {"Content-Type": "application/json"}, redirect: "follow",
+        body: JSON.stringify({secret: mailSecret, to, cc: b.cc || "", subject, html: mailHtml({first, docName, wNo, summary: String(b.mail_text ?? job.summary ?? job.work ?? "").trim(), payLink: job.pay_link}), attachments: att})});
+      const mt = await mr.text(); let md: any = {}; try { md = JSON.parse(mt); } catch (_) { /* html error page */ }
+      if (!md.ok) throw new Error((inv && action === "issue" ? `החשבונית הופקה (${docName}) אבל המייל לא נשלח: ` : "המייל לא נשלח: ") + (md.error || mt.slice(0, 160) || mr.status));
+      await sb.from("jobs").update({mail_sent_at: new Date().toISOString(), mail_to: to}).eq("id", job.id);
+      return json({ok: true, message: `נשלח ל-${to}: ${subject.replace(" – אהרן מערכות", "")}`, number: inv?.number || null});
+    }
+    return json({ok: false, message: "פעולה לא מוכרת"}, 400);
+  } catch (e) {
+    return json({ok: false, message: String((e as Error).message || e)});
+  }
+});

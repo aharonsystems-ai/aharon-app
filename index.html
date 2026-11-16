@@ -270,7 +270,7 @@ const SCHEMA={
   ["client","שם לקוח","text",1],["phone","טלפון","tel",0,null,"half"],["place","עסק / מיקום","text",0,null,"half"],["address","כתובת","text"],
   ["kind","סוג","select",0,KINDS],["work","פרטי עבודה","textarea"],["date","תאריך עבודה","date",0,null,"half"],["time","שעה","time",0,null,"half"],["price","מחיר גבייה ₪","num",0,null,"half"],["cost","עלויות ₪","num",0,null,"half"],
   ["profit","רווח בפועל ₪","num",0,null,"half"],["paid","שולם?","select",0,["לא ידוע","כן","לא","חלקי"],"half"],["paid_amount","כמה שולם (חלקי) ₪","num",0,null,"half"],
-  ["receipt","הוצאה קבלה?","select",0,["","כן","לא"],"half"],["notes","הערות","textarea"],
+  ["receipt","הוצאה קבלה?","select",0,["","כן","לא"],"half"],["warranty_no","מס׳ תעודת אחריות","ltr",0,null,"half"],["client_email","מייל הלקוח","ltr",0,null,"half"],["notes","הערות","textarea"],
   ["nvr_model","דגם","ltr",0,null,"half","מערכת הקלטה (NVR / DVR)"],["nvr_serial","מספר סידורי (S/N)","ltr",0,null,"half"],
   ["nvr_user","שם משתמש","ltr",0,null,"half"],["nvr_pass","סיסמה","secret",0,null,"half"],
   ["nvr_code","קוד מצלמות","secret",0,null,"half"],["nvr_ip","IP קבוע","ltr",0,null,"half"],["nvr_qr","QR / P2P","ltr"]]},
@@ -764,7 +764,7 @@ function row(k,x){
   if(k==="expenses"){t=x.vendor||x.cat;
     s=x.kind==="פרויקט"?[x.for_job,x.qty&&x.unit_price?`${x.qty} × ${ils(x.unit_price)}`:""].filter(Boolean).join(" · "):x.kind==="קבועה"?[x.cat!=="קבועה"?x.cat:"",x.date?heMonth(x.date.slice(0,7)):""].filter(Boolean).join(" · "):[x.cat,x.for_job,x.date?heDate(x.date):""].filter(Boolean).join(" · ");
     n=x.amount?ils(x.amount):"";p=[x.kind?`<span class="pill">${esc(x.kind==="פרויקט"?"פרויקט":"קבועה")}</span>`:"",x.vat?`<span class="pill">מע״מ ${ils(x.vat)}</span>`:"",/⚠/.test(x.notes||"")?`<span class="pill warn">לבדוק</span>`:""].filter(Boolean).join(" ")}
-  if(k==="jobs"){const ic=[(x.photos||[]).length?`📷${(x.photos||[]).length}`:"",x.signature_path?"✍️":""].filter(Boolean).join(" ");
+  if(k==="jobs"){const ic=[(x.photos||[]).length?`📷${(x.photos||[]).length}`:"",x.signature_path?"✍️":"",x.warranty_no?`🛡️${x.warranty_no}`:""].filter(Boolean).join(" ");
     return `<button type="button" class="row" data-open-job="${esc(x.id)}"><span class="t">${esc(t)}</span><span class="n">${n}</span><span class="s">${esc(s)}${ic?" · "+ic:""}</span><span class="p">${p}</span></button>`}
   if(k==="projects")return `<button type="button" class="row" data-open-project="${esc(x.id)}"><span class="t">${esc(t)}</span><span class="n"></span><span class="s">${esc(s)}</span><span class="p">${p}</span></button>`;
   return `<button type="button" class="row" data-edit="${k}" data-id="${esc(x.id)}"><span class="t">${esc(t)}</span><span class="n">${n}</span><span class="s">${esc(s)}</span><span class="p">${p}</span></button>`;
@@ -894,6 +894,7 @@ function clientView(){
   </section>
   <div class="sechead"><h2>עבודות, תיקונים וקריאות שירות (${jobs.length})</h2><button class="btn ghost" type="button" data-cnew="jobs">+ עבודה</button></div>
   ${jobs.length?`<div class="note" style="margin:6px 0">${Object.entries(kinds).map(([k,n])=>`${esc(k)}: ${n}`).join(" · ")}</div>`:""}
+  ${jobs.some(j=>j.warranty_no)?`<div class="note" style="margin:6px 0">🛡️ תעודות אחריות: ${jobs.filter(j=>j.warranty_no).map(j=>`<b>${esc(j.warranty_no)}</b>${j.date?` (${heDate(j.date)})`:""}`).join(" · ")}</div>`:""}
   <div class="list">${jobs.length?jobs.map(j=>row("jobs",j)).join(""):`<div class="empty">אין עבודות רשומות ללקוח הזה.</div>`}</div>
   <div class="sechead"><h2>משימות (${openT.length} פתוחות${doneT?` · ${doneT} בוצעו`:""})</h2><button class="btn ghost" type="button" data-cnew="tasks">+ משימה</button></div>
   <div class="list">${openT.length?openT.map(taskRow).join(""):`<div class="empty">אין משימות פתוחות.</div>`}</div>
@@ -1142,7 +1143,15 @@ async function jobView(m){
      <button class="btn ghost" type="button" id="signBtn">חתימה מחדש</button></div>`
    :`<button class="btn" type="button" id="signBtn" style="padding:14px">✍️ החתמת לקוח על אישור ביצוע</button>`}
 
-   <h2>חשבונית ותשלום</h2>
+   <h2>חשבונית ותעודת אחריות</h2>
+   <div class="list" style="padding:12px;display:grid;gap:8px">
+    <div class="pair"><div class="f"><label for="jWno">מס׳ תעודת אחריות</label><input id="jWno" type="text" inputmode="numeric" dir="ltr" placeholder="1000XX" value="${esc(j.warranty_no||"")}"></div>
+     <div class="f"><label for="jMail">מייל הלקוח</label><input id="jMail" type="email" dir="ltr" autocapitalize="off" value="${esc(j.client_email||clientMail(j)||"")}"></div></div>
+    ${j.mail_sent_at?`<div class="note" style="margin:0">✉️ נשלח ל-${esc(j.mail_to||"")} · ${new Date(j.mail_sent_at).toLocaleString("he-IL",{day:"numeric",month:"numeric",year:"2-digit",hour:"2-digit",minute:"2-digit"})}</div>`:""}
+    <div class="bar" style="margin:0">${j.warranty_path?`<button class="btn ghost" type="button" data-jfile="${esc(j.warranty_path)}" style="flex:1">🛡️ התעודה</button>`:""}${j.invoice_path?`<button class="btn ghost" type="button" data-jfile="${esc(j.invoice_path)}" style="flex:1">📄 החשבונית</button>`:""}</div>
+    <button class="btn" type="button" id="issueBtn" style="padding:14px">${j.morning_doc_id?"✉️ שליחת החשבונית + תעודת אחריות במייל":"🧾 הפקת חשבונית ב-Morning + תעודת אחריות במייל"}</button>
+   </div>
+   <h2>תשלום ושליחה ב-WhatsApp</h2>
    <div class="f"><label for="jDoc">מסמך מ-Morning לשליחה ללקוח</label><select id="jDoc"><option value="">— בלי מסמך —</option>
      ${mine.length?`<optgroup label="של הלקוח הזה">${mine.map(opt).join("")}</optgroup>`:""}<optgroup label="מסמכים אחרונים">${other.map(opt).join("")}</optgroup></select></div>
    <div class="f"><label for="jPay">קישור לתשלום (אם יש – ביט, פייבוקס, דף תשלום)</label><input id="jPay" type="url" dir="ltr" value="${esc(j.pay_link||"")}" placeholder="https://"></div>
@@ -1163,10 +1172,117 @@ async function jobView(m){
   $("#jSum").oninput=()=>{j.summary=$("#jSum").value;updWa()};
   $("#jDoc").onchange=()=>save({morning_doc_id:$("#jDoc").value||null});
   $("#jPay").onchange=()=>save({pay_link:$("#jPay").value.trim()||null});
+  $("#jWno").onchange=async()=>{const v=$("#jWno").value.replace(/\D/g,"");const d=v&&data.jobs.find(x=>x.id!==j.id&&String(x.warranty_no||"")===v);if(d){toast(`תעודה ${v} כבר רשומה על ${d.client}`);$("#jWno").value=j.warranty_no||"";return}$("#jWno").value=v;await save({warranty_no:v||null})};
+  $("#jMail").onchange=()=>save({client_email:$("#jMail").value.trim()||null});
+  $("#issueBtn").onclick=()=>issueSheet(j);
+  document.querySelectorAll("[data-jfile]").forEach(b=>b.onclick=()=>openJobFile(b.dataset.jfile));
   $("#jPhotos").onchange=e=>addPhotos(j,[...e.target.files]);
   document.querySelectorAll("[data-nvr]").forEach(i=>i.onchange=()=>save({[i.dataset.nvr]:i.value.trim()||null}));
   const updWa=()=>{const a=$("#waBtn");if(!a)return;const ph=waPhone(j.phone);a.href=(ph?`https://wa.me/${ph}`:"https://wa.me/")+"?text="+encodeURIComponent(waText(j))};
   updWa();
+}
+/* ---------- invoice in Morning + warranty certificate, one mail from Gmail ---------- */
+const W_ITEMS=["מצלמות אבטחה","מערכת אזעקה","אינטרקום ובקרת כניסה","רשת ותקשורת / WiFi","הגברה ואודיו","מגבר קליטה סלולרי"];
+const PAY_TYPES=[[4,"העברה בנקאית"],[10,"ביט / פייבוקס"],[1,"מזומן"],[2,"צ'ק"]];
+function clientMail(j){
+  if(j.client_email)return j.client_email;
+  const hit=jobDocHit(j);const d=data.morning_docs.filter(x=>x.client_email&&(x.id===j.morning_doc_id||hit(x))).sort((a,b)=>String(b.doc_date).localeCompare(String(a.doc_date)))[0];
+  if(d)return d.client_email;
+  const o=data.jobs.find(x=>x.id!==j.id&&x.client_email&&normName(x.client)===normName(j.client));return o?o.client_email:"";
+}
+function guessItems(j){
+  const t=[j.summary,j.work,j.kind,j.notes].join(" ");const out=[];
+  if(/מצלמ|NVR|DVR|מקליט|הקלטה/i.test(t))out.push(W_ITEMS[0]);if(/אזעק|גלאי|רכזת/.test(t))out.push(W_ITEMS[1]);
+  if(/אינטרקום|בקרת כניסה|קודן|מנעול/.test(t))out.push(W_ITEMS[2]);if(/רשת|ראוטר|wifi|אקסס|נקודת|סוויץ|מתג/i.test(t))out.push(W_ITEMS[3]);
+  if(/רמקול|הגבר|סאונד|אודיו|מגבר שמע/.test(t))out.push(W_ITEMS[4]);if(/מגבר קליטה|סלולר/.test(t))out.push(W_ITEMS[5]);return out;
+}
+async function openJobFile(path){
+  const w=window.open("","_blank");
+  const {data:s,error}=await sb.storage.from("jobfiles").createSignedUrl(path,3600);
+  if(error||!s){if(w)w.close();toast("הקובץ לא נפתח");return}
+  if(w)w.location=s.signedUrl;else location.href=s.signedUrl;
+}
+function openPdf64(b64,w){
+  const bin=atob(b64),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+  const url=URL.createObjectURL(new Blob([u],{type:"application/pdf"}));if(w)w.location=url;else window.open(url,"_blank");
+}
+async function issueSheet(j){
+  const el=$("#sheet");const linked=data.morning_docs.find(d=>d.id===j.morning_doc_id);
+  let wNo=j.warranty_no||"";
+  if(!wNo){try{const {data:r}=await sb.functions.invoke("issue",{body:{action:"next"}});if(r&&r.next)wNo=r.next}catch(e){}}
+  const items=(j.warranty_items&&j.warranty_items.length)?j.warranty_items:guessItems(j);
+  const sum=String(j.summary??j.work??"").trim();
+  const line=(l={})=>`<div class="iline" style="display:grid;grid-template-columns:1fr 64px 96px 34px;gap:6px;align-items:end">
+     <div class="f"><label>תיאור</label><input data-l="description" type="text" value="${esc(l.description||"")}"></div>
+     <div class="f"><label>כמות</label><input data-l="quantity" type="number" inputmode="decimal" step="any" value="${esc(l.quantity??1)}"></div>
+     <div class="f"><label>מחיר ליח׳ ₪</label><input data-l="price" type="number" inputmode="decimal" step="any" value="${esc(l.price??"")}"></div>
+     <button class="btn ghost" type="button" data-rmline aria-label="מחיקת שורה" style="padding:8px 0">✕</button></div>`;
+  const mode0=linked?"linked":"new";
+  el.innerHTML=`<form id="edit" novalidate><h3>🧾 חשבונית + תעודת אחריות</h3>
+   <div class="note">המייל יוצא מהג'ימייל של אהרן מערכות, עם החשבונית ותעודת האחריות כקבצי PDF מצורפים. החשבונית מופקת ב-Morning ונשמרת שם כרגיל.</div>
+   <div class="f"><label for="iMode">מה לצרף</label><select id="iMode">
+     <option value="new" ${mode0==="new"?"selected":""}>חשבונית חדשה ב-Morning + תעודת אחריות</option>
+     ${linked?`<option value="linked" selected>${esc(linked.type_name)} ${esc(linked.number)} (כבר הופקה) + תעודת אחריות</option>`:""}
+     <option value="warranty">רק תעודת אחריות</option></select></div>
+   <div id="iNew">
+    <div class="pair"><div class="f"><label for="iType">סוג מסמך</label><select id="iType"><option value="305">חשבונית מס</option><option value="320">חשבונית מס קבלה (שולם)</option></select></div>
+     <div class="f"><label for="iDate">תאריך</label><input id="iDate" type="date" value="${esc(today())}"></div></div>
+    <div class="f" id="iPayF" hidden><label for="iPay">איך שילם</label><select id="iPay">${PAY_TYPES.map(([v,t])=>`<option value="${v}">${t}</option>`).join("")}</select></div>
+    <div id="iLines" style="display:grid;gap:6px">${line({description:(j.kind?j.kind+" – ":"")+(sum||"").split("\n")[0].slice(0,120),quantity:1,price:j.price??""})}</div>
+    <button class="btn ghost" type="button" id="iAdd">+ שורה</button>
+    <label class="vchk" style="margin:6px 0"><input type="checkbox" id="iIncl"> המחירים כוללים מע״מ</label>
+    <div class="sum" id="iTot" style="padding:6px 2px"></div>
+   </div>
+   <h4 class="sec">הלקוח</h4>
+   <div class="pair"><div class="f"><label for="iClient">שם (כמו ב-Morning)</label><input id="iClient" type="text" value="${esc(linked?.client||j.client||"")}"></div>
+    <div class="f"><label for="iMail">מייל</label><input id="iMail" type="email" dir="ltr" autocapitalize="off" value="${esc(clientMail(j))}"></div></div>
+   <div class="pair"><div class="f"><label for="iPhone">טלפון</label><input id="iPhone" type="tel" dir="ltr" value="${esc(j.phone||"")}"></div>
+    <div class="f"><label for="iAddr">כתובת ההתקנה</label><input id="iAddr" type="text" value="${esc(j.address||j.place||"")}"></div></div>
+   <h4 class="sec">תעודת אחריות</h4>
+   <div class="pair"><div class="f"><label for="iWno">מס׳ תעודה</label><input id="iWno" type="text" inputmode="numeric" dir="ltr" value="${esc(wNo)}"></div>
+    <div class="f"><label for="iWdate">תאריך התקנה</label><input id="iWdate" type="date" value="${esc(j.date||today())}"></div></div>
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">${W_ITEMS.map(t=>`<label class="vchk"><input type="checkbox" data-wi="${esc(t)}" ${items.includes(t)?"checked":""}> ${esc(t)}</label>`).join("")}</div>
+   <div class="f"><label for="iDet">פירוט קצר (מה הותקן)</label><textarea id="iDet" style="min-height:60px">${esc(sum)}</textarea></div>
+   <h4 class="sec">המייל</h4>
+   <div class="f"><label for="iTxt">סיכום העבודה במייל</label><textarea id="iTxt" style="min-height:70px">${esc(sum)}</textarea></div>
+   <div class="actions"><button class="btn ghost" type="button" id="iPrev">👁️ תצוגה מקדימה</button><button class="btn" type="button" id="iGo">שליחה</button><button class="btn ghost" type="button" data-close>סגירה</button></div>
+   <div class="note" id="iMsg" hidden></div></form>`;
+  el.hidden=false;
+  const form=$("#edit");form.addEventListener("input",()=>{form.dataset.dirty="1"});
+  const mode=()=>$("#iMode").value;
+  const tot=()=>{const net=[...form.querySelectorAll(".iline")].reduce((a,r)=>a+num(r.querySelector('[data-l="quantity"]').value)*num(r.querySelector('[data-l="price"]').value),0);
+    const incl=$("#iIncl").checked,t=incl?net:net*1.18;$("#iTot").innerHTML=`<span>סה״כ לתשלום כולל מע״מ</span><span>₪${t.toLocaleString("he-IL",{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`};
+  const sync=()=>{const m=mode();$("#iNew").hidden=m!=="new";$("#iPayF").hidden=$("#iType").value!=="320";
+    $("#iGo").textContent=m==="new"?"🧾 הפקה ב-Morning ושליחה":"✉️ שליחה במייל";$("#iGo").dataset.sure="";tot()};
+  sync();form.addEventListener("input",tot);$("#iMode").onchange=sync;$("#iType").onchange=sync;$("#iIncl").onchange=tot;
+  $("#iAdd").onclick=()=>{$("#iLines").insertAdjacentHTML("beforeend",line());};
+  $("#iLines").onclick=e=>{const b=e.target.closest("[data-rmline]");if(b&&form.querySelectorAll(".iline").length>1){b.closest(".iline").remove();tot()}};
+  const body=action=>{const m=mode();return {action,job_id:j.id,with_invoice:m!=="warranty",type:Number($("#iType").value),date:$("#iDate").value,pay_type:Number($("#iPay").value),
+    vat_included:$("#iIncl").checked,lines:[...form.querySelectorAll(".iline")].map(r=>({description:r.querySelector('[data-l="description"]').value.trim(),quantity:num(r.querySelector('[data-l="quantity"]').value)||1,price:num(r.querySelector('[data-l="price"]').value)})),
+    client:$("#iClient").value.trim(),email:$("#iMail").value.trim(),phone:$("#iPhone").value.trim(),address:$("#iAddr").value.trim(),mail_text:$("#iTxt").value.trim(),
+    description:(sum||"").split("\n")[0].slice(0,120),
+    warranty:{no:$("#iWno").value.replace(/\D/g,""),date:$("#iWdate").value,items:[...form.querySelectorAll("[data-wi]:checked")].map(x=>x.dataset.wi),details:$("#iDet").value.trim()}}};
+  const msg=t=>{const n=$("#iMsg");n.hidden=!t;n.textContent=t||""};
+  const call=async b=>{const res=await sb.functions.invoke("issue",{body:b});let r=res.data;if(res.error&&res.error.context&&res.error.context.json){try{r=await res.error.context.json()}catch(x){}}return r||{ok:false,message:"אין תשובה מהשרת"}};
+  el.onclick=async e=>{
+    if(e.target===el||e.target.closest("[data-close]")){if(sheetMayClose())el.hidden=true;return}
+    if(e.target.closest("#iPrev")){const b=e.target.closest("#iPrev");const b0=body("preview");if(mode()==="linked")b0.with_invoice=false;
+      const w1=b0.with_invoice?window.open("","_blank"):null,w2=b0.warranty.no?window.open("","_blank"):null;
+      b.disabled=true;b.textContent="מכין…";msg("");const r=await call(b0);b.disabled=false;b.textContent="👁️ תצוגה מקדימה";
+      if(!r.ok){if(w1)w1.close();if(w2)w2.close();msg(r.message||"התצוגה נכשלה");return}
+      if(r.invoice)openPdf64(r.invoice,w1);else if(w1)w1.close();if(r.warranty)openPdf64(r.warranty,w2);else if(w2)w2.close();
+      if(mode()==="linked"&&linked&&linked.url)window.open(linked.url,"_blank");return}
+    const go=e.target.closest("#iGo");if(!go)return;
+    const b=body(mode()==="new"?"issue":"send");b.force=mode()==="new";
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(b.email)){$("#iMail").focus();msg("צריך מייל של הלקוח");return}
+    if(mode()==="new"&&!b.lines.some(l=>l.description&&l.price)){msg("צריך שורה עם תיאור ומחיר");return}
+    if(mode()==="warranty"&&!b.warranty.no){$("#iWno").focus();msg("צריך מספר תעודה");return}
+    if(!go.dataset.sure){go.dataset.sure="1";go.textContent=mode()==="new"?"ללחוץ שוב: מפיק חשבונית אמיתית ב-Morning ושולח ל-"+b.email:"ללחוץ שוב לשליחה ל-"+b.email;return}
+    go.disabled=true;go.textContent=mode()==="new"?"מפיק ושולח…":"שולח…";msg("");
+    const r=await call(b);go.disabled=false;
+    if(!r.ok){msg(r.message||"נכשל");go.dataset.sure="";sync();await loadAll();return}
+    form.dataset.dirty="";toast(r.message||"נשלח");el.hidden=true;await loadAll();
+  };
 }
 function waText(j){
   const doc=data.morning_docs.find(d=>d.id===j.morning_doc_id);
