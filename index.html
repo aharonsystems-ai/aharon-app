@@ -1208,8 +1208,8 @@ function openPdf64(b64,w){
 }
 async function issueSheet(j){
   const el=$("#sheet");const linked=data.morning_docs.find(d=>d.id===j.morning_doc_id);
-  let wNo=j.warranty_no||"";
-  if(!wNo){try{const {data:r}=await sb.functions.invoke("issue",{body:{action:"next"}});if(r&&r.next)wNo=r.next}catch(e){}}
+  let wNo=j.warranty_no||"";const wOn=!!wNo||!j.kind||j.kind==="התקנה";
+  if(!wNo&&wOn){try{const {data:r}=await sb.functions.invoke("issue",{body:{action:"next"}});if(r&&r.next)wNo=r.next}catch(e){}}
   const items=(j.warranty_items&&j.warranty_items.length)?j.warranty_items:guessItems(j);
   const sum=String(j.summary??j.work??"").trim();
   const line=(l={})=>`<div class="iline" style="display:grid;grid-template-columns:1fr 64px 96px 34px;gap:6px;align-items:end">
@@ -1238,11 +1238,13 @@ async function issueSheet(j){
     <div class="f"><label for="iMail">מייל</label><input id="iMail" type="email" dir="ltr" autocapitalize="off" value="${esc(clientMail(j))}"></div></div>
    <div class="pair"><div class="f"><label for="iPhone">טלפון</label><input id="iPhone" type="tel" dir="ltr" value="${esc(j.phone||"")}"></div>
     <div class="f"><label for="iAddr">כתובת ההתקנה</label><input id="iAddr" type="text" value="${esc(j.address||j.place||"")}"></div></div>
-   <h4 class="sec">תעודת אחריות</h4>
+   <label class="vchk" style="margin-top:10px;font-size:16px"><input type="checkbox" id="iWon" ${wOn?"checked":""}> לצרף תעודת אחריות</label>
+   <div id="iW">
    <div class="pair"><div class="f"><label for="iWno">מס׳ תעודה</label><input id="iWno" type="text" inputmode="numeric" dir="ltr" value="${esc(wNo)}"></div>
     <div class="f"><label for="iWdate">תאריך התקנה</label><input id="iWdate" type="date" value="${esc(j.date||today())}"></div></div>
    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">${W_ITEMS.map(t=>`<label class="vchk"><input type="checkbox" data-wi="${esc(t)}" ${items.includes(t)?"checked":""}> ${esc(t)}</label>`).join("")}</div>
    <div class="f"><label for="iDet">פירוט קצר (מה הותקן)</label><textarea id="iDet" style="min-height:60px">${esc(sum)}</textarea></div>
+   </div>
    <h4 class="sec">המייל</h4>
    <div class="f"><label for="iTxt">סיכום העבודה במייל</label><textarea id="iTxt" style="min-height:70px">${esc(sum)}</textarea></div>
    <div class="actions"><button class="btn ghost" type="button" id="iPrev">👁️ תצוגה מקדימה</button><button class="btn" type="button" id="iGo">שליחה</button><button class="btn ghost" type="button" data-close>סגירה</button></div>
@@ -1252,16 +1254,16 @@ async function issueSheet(j){
   const mode=()=>$("#iMode").value;
   const tot=()=>{const net=[...form.querySelectorAll(".iline")].reduce((a,r)=>a+num(r.querySelector('[data-l="quantity"]').value)*num(r.querySelector('[data-l="price"]').value),0);
     const incl=$("#iIncl").checked,t=incl?net:net*1.18;$("#iTot").innerHTML=`<span>סה״כ לתשלום כולל מע״מ</span><span>₪${t.toLocaleString("he-IL",{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`};
-  const sync=()=>{const m=mode();$("#iNew").hidden=m!=="new";$("#iPayF").hidden=$("#iType").value!=="320";
+  const sync=()=>{const m=mode();if(m==="warranty")$("#iWon").checked=true;$("#iW").hidden=!$("#iWon").checked;$("#iNew").hidden=m!=="new";$("#iPayF").hidden=$("#iType").value!=="320";
     $("#iGo").textContent=m==="new"?"🧾 הפקה ב-Morning ושליחה":"✉️ שליחה במייל";$("#iGo").dataset.sure="";tot()};
-  sync();form.addEventListener("input",tot);$("#iMode").onchange=sync;$("#iType").onchange=sync;$("#iIncl").onchange=tot;
+  sync();form.addEventListener("input",tot);$("#iMode").onchange=sync;$("#iWon").onchange=async()=>{if($("#iWon").checked&&!$("#iWno").value){try{const {data:r}=await sb.functions.invoke("issue",{body:{action:"next"}});if(r&&r.next)$("#iWno").value=r.next}catch(e){}}sync()};$("#iType").onchange=sync;$("#iIncl").onchange=tot;
   $("#iAdd").onclick=()=>{$("#iLines").insertAdjacentHTML("beforeend",line());};
   $("#iLines").onclick=e=>{const b=e.target.closest("[data-rmline]");if(b&&form.querySelectorAll(".iline").length>1){b.closest(".iline").remove();tot()}};
   const body=action=>{const m=mode();return {action,job_id:j.id,with_invoice:m!=="warranty",type:Number($("#iType").value),date:$("#iDate").value,pay_type:Number($("#iPay").value),
     vat_included:$("#iIncl").checked,lines:[...form.querySelectorAll(".iline")].map(r=>({description:r.querySelector('[data-l="description"]').value.trim(),quantity:num(r.querySelector('[data-l="quantity"]').value)||1,price:num(r.querySelector('[data-l="price"]').value)})),
     client:$("#iClient").value.trim(),email:$("#iMail").value.trim(),phone:$("#iPhone").value.trim(),address:$("#iAddr").value.trim(),mail_text:$("#iTxt").value.trim(),
     description:(sum||"").split("\n")[0].slice(0,120),
-    warranty:{no:$("#iWno").value.replace(/\D/g,""),date:$("#iWdate").value,items:[...form.querySelectorAll("[data-wi]:checked")].map(x=>x.dataset.wi),details:$("#iDet").value.trim()}}};
+    warranty:{no:$("#iWon").checked?$("#iWno").value.replace(/\D/g,""):"",date:$("#iWdate").value,items:[...form.querySelectorAll("[data-wi]:checked")].map(x=>x.dataset.wi),details:$("#iDet").value.trim()}}};
   const msg=t=>{const n=$("#iMsg");n.hidden=!t;n.textContent=t||""};
   const call=async b=>{const res=await sb.functions.invoke("issue",{body:b});let r=res.data;if(res.error&&res.error.context&&res.error.context.json){try{r=await res.error.context.json()}catch(x){}}return r||{ok:false,message:"אין תשובה מהשרת"}};
   el.onclick=async e=>{
