@@ -450,9 +450,9 @@ $("#resetBtn").addEventListener("click",async()=>{
 async function loadAll(){
   $("#status").textContent="טוען…";
   try{
-    const tables=["jobs","stock","tasks","debts","expenses","morning_docs","projects","quote_followups","client_aliases"];
-    const all=async t=>{let out=[];for(let from=0;;from+=1000){const r=await sb.from(t).select("*").order(t==="quote_followups"?"doc_id":"id").range(from,from+999);if(r.error)throw r.error;out=out.concat(r.data||[]);if(!r.data||r.data.length<1000)break}return out};
-    const res=await Promise.all(tables.map(all));
+    const tables=["jobs","stock","tasks","debts","expenses","morning_docs","projects","quote_followups","client_aliases","invoices","invoice_sends","app_settings"];
+    const all=async t=>{let out=[];for(let from=0;;from+=1000){const r=await sb.from(t).select("*").order(t==="quote_followups"?"doc_id":t==="app_settings"?"key":"id").range(from,from+999);if(r.error)throw r.error;out=out.concat(r.data||[]);if(!r.data||r.data.length<1000)break}return out};
+    const res=await Promise.all(tables.map(t=>["invoices","invoice_sends","app_settings"].includes(t)?all(t).catch(()=>[]):all(t)));
     res.forEach((rows,i)=>{data[tables[i]]=rows});
     try{localStorage.setItem("aharon-app-data",JSON.stringify({at:Date.now(),data,lastSync}))}catch(e){}
     const lg=await sb.from("sync_log").select("at,ok,message").order("at",{ascending:false}).limit(1);
@@ -520,6 +520,7 @@ function render(){
   if(!loaded){m.innerHTML=`<div class="list"><div class="empty">טוען נתונים…</div></div>`;return}
   if(tab==="home"){m.innerHTML=home();return}
   if(tab==="quotes"){m.innerHTML=quotesView();return}
+  if(tab==="invoices"){m.innerHTML=invView();const f=$("#invFile");if(f)f.onchange=()=>invUpload(f.files[0]);return}
   if(tab==="clients"){if(curClient){m.innerHTML=clientView();return}m.innerHTML=clientsView();const s=$("#q");if(s){s.value=q;s.oninput=()=>{q=s.value.trim();$("#clist").innerHTML=clientRows()}}return}
   if(tab==="projects"&&curProject){projectView(m);return}
   if(tab==="jobs"&&curJob){jobView(m);return}
@@ -569,6 +570,7 @@ function home(){
    <button class="tile ${debtSum?'warn':''}" data-go="debts" data-f="open"><span>אני חייב</span><b>${ils(debtSum)}</b><span>${open.length} חובות פתוחים</span></button>
    <button class="tile ${low.length?'bad':'good'}" data-go="stock" data-f="low"><span>חסר במלאי</span><b>${low.length}</b><span>${data.stock.length} פריטים</span></button>
    <button class="tile" data-go="clients"><span>לקוחות</span><b>${clientsAll().length}</b><span>עבודות, תשלומים וחובות לכל לקוח</span></button>
+   <button class="tile ${invToCheck().length?'warn':''}" data-go="invoices" data-f="${invToCheck().length?'check':'all'}"><span>חשבוניות ספקים</span><b>${invToCheck().length?invToCheck().length+" לבדיקה":"הכל נבדק"}</b><span>מהמייל · Morning · רו״ח</span></button>
    <button class="tile" data-go="tasks"><span>משימות פתוחות</span><b>${tasks.length}</b><span>${tasks.filter(t=>t.date&&t.date<=today()).length} להיום או באיחור</span></button>
   </div>
   <section><div class="sechead"><h2>המשימות שלי</h2><button class="btn ghost" type="button" data-new="tasks">+ משימה</button></div>
@@ -709,7 +711,7 @@ function sorted(k){
 function listView(k){
   const cur=filt[k]||FILTERS[k][0][0];
   const extra=k==="stock"?`<div class="bar"><label class="btn" style="flex:1;text-align:center;cursor:pointer">🤖 צילום מדבקה (AI)<input type="file" accept="image/*" id="aiFile" hidden></label><button class="btn ghost" type="button" id="scanBtn">📷 ברקוד</button></div><div class="bar"><button class="btn ghost" type="button" id="pullItems" style="flex:1">משיכת פריטים מ-Morning</button></div>`:"";
-  return `<div class="bar"><h2 style="flex:1">${TABS.find(t=>t[0]===k)[1]}</h2>${k==="jobs"?`<button class="btn ghost" type="button" data-go="clients">לקוחות</button>`:""}${["jobs","tasks","projects"].includes(k)?`<button class="btn ghost" type="button" data-voice aria-label="לדבר">🎤</button>`:""}<button class="btn${k==="stock"?" ghost":""}" type="button" data-new="${k}">+ ${SCHEMA[k].title}</button></div>
+  return `<div class="bar"><h2 style="flex:1">${TABS.find(t=>t[0]===k)[1]}</h2>${k==="jobs"?`<button class="btn ghost" type="button" data-go="clients">לקוחות</button>`:""}${k==="expenses"?`<button class="btn ghost" type="button" data-go="invoices">חשבוניות${invToCheck().length?" ("+invToCheck().length+")":""}</button>`:""}${["jobs","tasks","projects"].includes(k)?`<button class="btn ghost" type="button" data-voice aria-label="לדבר">🎤</button>`:""}<button class="btn${k==="stock"?" ghost":""}" type="button" data-new="${k}">+ ${SCHEMA[k].title}</button></div>
   ${extra}
   <div class="bar"><input id="q" type="search" placeholder="חיפוש" aria-label="חיפוש"></div>
   <div class="filters" role="group" aria-label="סינון">${FILTERS[k].map(([v,l])=>`<button type="button" class="chipbtn" data-filt="${v}" aria-pressed="${v===cur}">${l}</button>`).join("")}</div>
@@ -1593,6 +1595,130 @@ async function sharePlan(p){
   }catch(e){if(e&&e.name!=="AbortError")toast("לא הצלחתי להכין את התמונה")}
 }
 
+/* ---------- invoices: from Gmail (auto) or uploaded, review, Morning, accountant ---------- */
+let invMonth=null;
+const ymNow=()=>today().slice(0,7);
+const ymAdd=(ym,d)=>{const [y,m]=ym.split("-").map(Number);const t=new Date(y,m-1+d,1);return t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")};
+const invAll=()=>(data.invoices||[]);
+const invToCheck=()=>invAll().filter(x=>x.kind==="expense"&&x.status==="לבדיקה");
+const accountant=()=>((data.app_settings||[]).find(s=>s.key==="accountant_email")||{}).value||"";
+function invRow(x){
+  const s=[x.doc_date?heDate(x.doc_date):"",[x.doc_type,x.doc_number].filter(Boolean).join(" "),x.description].filter(Boolean).join(" · ");
+  const p=[x.status==="מאושר"?`<span class="pill good">מאושר</span>`:x.status==="לא רלוונטי"?`<span class="pill">${x.kind==="income"?"הכנסה שלי":"לא חשבונית"}</span>`:`<span class="pill warn">לבדיקה</span>`,
+    x.morning_state==="נשלח"?`<span class="pill good">Morning ✓</span>`:x.morning_state==="שגיאה"?`<span class="pill bad">Morning ✗</span>`:"",
+    x.sent_at?`<span class="pill good">לרו״ח ✓</span>`:"",/⚠/.test(x.notes||"")?`<span class="pill bad">לבדוק</span>`:"",x.source==="ידני"?`<span class="pill">ידני</span>`:""].filter(Boolean).join(" ");
+  return `<button type="button" class="row" data-inv="${esc(x.id)}"><span class="t">${esc(x.supplier||x.from_name||"ספק לא ידוע")}</span><span class="n">${x.amount!=null?ils(x.amount):"—"}</span><span class="s">${esc(s)}</span><span class="p">${p}</span></button>`;
+}
+function invView(){
+  invMonth=invMonth||ymNow();
+  const f=filt.invoices||"check";
+  const inMonth=invAll().filter(x=>x.month===invMonth);
+  const exp=inMonth.filter(x=>x.kind==="expense"&&x.status!=="לא רלוונטי");
+  const ok=exp.filter(x=>x.status==="מאושר");
+  let items=f==="check"?invToCheck():f==="ok"?ok:f==="no"?inMonth.filter(x=>x.status==="לא רלוונטי"):exp;
+  items=items.slice().sort((a,b)=>String(b.doc_date||b.received_at||"").localeCompare(String(a.doc_date||a.received_at||"")));
+  const toMorning=ok.filter(x=>x.morning_state!=="נשלח");
+  const sends=(data.invoice_sends||[]).filter(s=>s.month===invMonth).sort((a,b)=>String(b.requested_at).localeCompare(String(a.requested_at)));
+  const last=sends[0];
+  const sendNote=last?(last.status==="נשלח"?`נשלח לרו״ח ב־${new Date(last.sent_at).toLocaleDateString("he-IL")} (${last.count||""} חשבוניות)`:last.status==="ממתין"?"ממתין לשליחה לרו״ח (עד שעה, מהג'ימייל שלך)":"השליחה לרו״ח נכשלה: "+(last.error||"")):"";
+  const sum=a=>a.reduce((s,x)=>s+num(x.amount),0), vat=a=>a.reduce((s,x)=>s+num(x.vat),0);
+  return `<div class="bar"><h2 style="flex:1">חשבוניות</h2><label class="btn" style="cursor:pointer">+ העלאה<input type="file" accept="application/pdf,image/*" id="invFile" hidden></label><button class="btn ghost" type="button" data-go="expenses">הוצאות</button></div>
+   <div class="bar" style="align-items:center"><button class="btn ghost" type="button" data-invm="1" aria-label="חודש הבא">→</button><h3 style="flex:1;text-align:center;margin:0">${heMonth(invMonth)}</h3><button class="btn ghost" type="button" data-invm="-1" aria-label="חודש קודם">←</button></div>
+   <div class="tiles" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+    <div class="tile"><span>הוצאות בחודש</span><b>${ils(sum(exp))}</b><span>${exp.length} מסמכים</span></div>
+    <div class="tile"><span>מע״מ</span><b>${ils(vat(exp))}</b><span>מתוך המסמכים</span></div>
+    <div class="tile ${invToCheck().length?"warn":"good"}"><span>לבדיקה</span><b>${invToCheck().length}</b><span>בכל החודשים</span></div></div>
+   <div class="filters" role="group" aria-label="סינון">${[["check","לבדיקה"],["all","כל החודש"],["ok","מאושרות"],["no","לא רלוונטי"]].map(([v,l])=>`<button type="button" class="chipbtn" data-filt="${v}" aria-pressed="${v===f}">${l}</button>`).join("")}</div>
+   <div class="list">${items.length?items.map(invRow).join(""):`<div class="empty">${f==="check"?"אין חשבוניות לבדיקה 👌":"אין חשבוניות בחודש הזה."}</div>`}</div>
+   <div class="bar" style="margin-top:10px"><button class="btn" type="button" id="invMorning" style="flex:1" ${toMorning.length?"":"disabled"}>שליחה ל-Morning (${toMorning.length})</button>
+    <button class="btn" type="button" id="invSend" style="flex:1" ${ok.length?"":"disabled"}>שליחה לרו״ח (${ok.length})</button></div>
+   ${sendNote?`<div class="note">${esc(sendNote)}</div>`:""}
+   <div class="note">רו״ח: ${accountant()?`<b dir="ltr">${esc(accountant())}</b>`:"עוד לא הוגדר"} · <a href="#" id="invAcc">${accountant()?"שינוי":"הגדרה"}</a><br>חשבוניות שמגיעות למייל נכנסות לכאן לבד כל שעה. לרו״ח נשלחות רק חשבוניות מאושרות של החודש שמוצג.</div>`;
+}
+async function invOpenFile(x){
+  const w=window.open("about:blank","_blank");
+  const {data:s,error}=await sb.storage.from("invoices").createSignedUrl(x.file_path,3600);
+  if(error||!s){if(w)w.close();toast("הקובץ לא נפתח");return}
+  if(w)w.location=s.signedUrl;else location.href=s.signedUrl;
+}
+function invSheet(id){
+  const x=invAll().find(i=>i.id===id);if(!x)return;
+  const F=[["supplier","ספק","text"],["doc_type","סוג מסמך","select",["חשבונית מס","חשבונית מס קבלה","קבלה","חשבונית זיכוי","חשבון עסקה","אחר"]],["doc_number","מספר מסמך","text"],["doc_date","תאריך המסמך","date"],["amount","סכום כולל מע״מ","num"],["vat","מע״מ","num"],["month","חודש דיווח","month"],["description","מה נקנה","text"],["notes","הערות","textarea"]];
+  const fld=([k,l,t,o])=>{const v=x[k]??"";const idA="i_"+k;
+    if(t==="select"){const opts=o.includes(v)||!v?o:[v,...o];return `<div class="f"><label for="${idA}">${l}</label><select id="${idA}" name="${k}"><option value=""></option>${opts.map(z=>`<option ${z===v?"selected":""}>${esc(z)}</option>`).join("")}</select></div>`}
+    if(t==="textarea")return `<div class="f"><label for="${idA}">${l}</label><textarea id="${idA}" name="${k}">${esc(v)}</textarea></div>`;
+    const it=t==="num"?'type="number" inputmode="decimal" step="any"':t==="date"?'type="date"':t==="month"?'type="month"':'type="text"';
+    return `<div class="f"><label for="${idA}">${l}</label><input id="${idA}" name="${k}" ${it} value="${esc(v)}"></div>`};
+  const el=$("#sheet");
+  el.innerHTML=`<form id="edit" novalidate><h3>${esc(x.supplier||"חשבונית")}</h3>
+   ${x.subject?`<div class="note">מהמייל: ${esc(x.from_name||x.from_email||"")} · ${esc(x.subject)}</div>`:""}
+   ${x.kind!=="expense"?`<div class="note">ה-AI סימן את זה כ${x.kind==="income"?"מסמך שאתה הוצאת (הכנסה)":"לא חשבונית"}. אם זו כן הוצאה – לחץ "אישור".</div>`:""}
+   ${x.morning_err?`<div class="note">Morning: ${esc(x.morning_err)}</div>`:""}
+   <button class="btn ghost" type="button" id="invFileOpen">📄 פתיחת הקובץ</button>
+   <div class="pair">${fld(F[0])}${fld(F[1])}</div><div class="pair">${fld(F[2])}${fld(F[3])}</div><div class="pair">${fld(F[4])}${fld(F[5])}</div>${fld(F[6])}${fld(F[7])}${fld(F[8])}
+   <div class="actions"><button class="btn" type="submit" data-st="מאושר">✓ אישור ושמירה</button><button class="btn ghost" type="submit" data-st="">שמירה</button><button class="btn ghost" type="button" data-close>סגירה</button></div>
+   <div class="actions"><button class="btn ghost" type="button" id="invNo">${x.status==="לא רלוונטי"?"להחזיר לבדיקה":"לא רלוונטי"}</button><button class="btn ghost" type="button" id="invAi">🤖 לקרוא שוב</button>${x.morning_state!=="נשלח"?`<button class="btn ghost" type="button" id="invOneM">ל-Morning</button>`:""}<button class="btn danger" type="button" data-del>מחיקה</button></div></form>`;
+  el.hidden=false;
+  const form=$("#edit");let st="";
+  form.addEventListener("input",()=>{form.dataset.dirty="1"});
+  form.querySelectorAll("[type=submit]").forEach(b=>b.onclick=()=>{st=b.dataset.st});
+  const upd=async(patch,msg)=>{const {error}=await sb.from("invoices").update({...patch,updated_at:new Date().toISOString()}).eq("id",id);if(error){toast("לא נשמר. נסה שוב.");return false}toast(msg);form.dataset.dirty="";el.hidden=true;await loadAll();return true};
+  el.onclick=async e=>{
+    if(e.target===el||e.target.closest("[data-close]")){if(sheetMayClose())el.hidden=true;return}
+    if(e.target.closest("#invFileOpen")){invOpenFile(x);return}
+    if(e.target.closest("#invNo")){await upd(x.status==="לא רלוונטי"?{status:"לבדיקה",kind:"expense"}:{status:"לא רלוונטי"},"עודכן");return}
+    if(e.target.closest("#invAi")){const b=e.target.closest("#invAi");b.disabled=true;b.textContent="קורא…";
+      const {data:r,error}=await sb.functions.invoke("invoices",{body:{action:"reread",id}});toast(error||!r?.ok?"לא הצלחתי לקרוא":"עודכן מהמסמך");el.hidden=true;await loadAll();return}
+    if(e.target.closest("#invOneM")){const b=e.target.closest("#invOneM");b.disabled=true;b.textContent="שולח…";
+      const {data:r,error}=await sb.functions.invoke("invoices",{body:{action:"morning",ids:[id]}});toast(error?"השליחה ל-Morning נכשלה":(r&&r.message)||"נשלח");el.hidden=true;await loadAll();return}
+    const del=e.target.closest("[data-del]");
+    if(del){if(del.dataset.sure){await sb.storage.from("invoices").remove([x.file_path]).catch(()=>{});const {error}=await sb.from("invoices").delete().eq("id",id);toast(error?"המחיקה נכשלה":"נמחק");el.hidden=true;await loadAll()}
+      else{del.dataset.sure=1;del.textContent="ללחוץ שוב למחיקה"}}
+  };
+  form.onsubmit=async e=>{e.preventDefault();
+    const b={};for(const [k,,t] of F){let v=form.elements[k].value.trim();if(t==="num")v=v===""?null:Number(v);else if(t==="date"||t==="month")v=v||null;else v=v||null;b[k]=v}
+    if(!b.month)b.month=(b.doc_date||today()).slice(0,7);
+    if(st==="מאושר"){b.status="מאושר";b.kind="expense"}
+    await upd(b,st?"✓ אושר":"נשמר");
+  };
+}
+async function invUpload(file){
+  if(!file)return;
+  if(file.size>15*1048576){toast("הקובץ גדול מדי (עד 15MB)");return}
+  toast("מעלה וקורא את החשבונית…");
+  try{
+    let blob=file,mime=file.type||"application/pdf",ext=(file.name.match(/\.([a-z0-9]+)$/i)||[,"pdf"])[1].toLowerCase();
+    if(/^image\//.test(mime)&&!/png/.test(mime)){blob=await compress(file,2200,.85);mime="image/jpeg";ext="jpg"}
+    const path=`manual/${ymNow()}/${Date.now()}.${ext}`;
+    const {error}=await sb.storage.from("invoices").upload(path,blob,{contentType:mime,upsert:false});if(error)throw error;
+    const {data:r,error:e2}=await sb.functions.invoke("invoices",{body:{action:"manual",path,mime,file_name:file.name}});
+    if(e2||!r?.ok)throw new Error(r?.message||"");
+    await loadAll();if(r.invoice){invMonth=r.invoice.month||invMonth;invSheet(r.invoice.id)}
+  }catch(e){toast("ההעלאה נכשלה. נסה שוב.")}
+}
+async function invSetAccountant(){
+  const v=prompt("המייל של רואה החשבון:",accountant());if(v===null)return null;
+  const m=v.trim();if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m)){toast("כתובת מייל לא תקינה");return null}
+  const {error}=await sb.from("app_settings").upsert({key:"accountant_email",value:m,updated_at:new Date().toISOString()});
+  if(error){toast("לא נשמר");return null}toast("נשמר");await loadAll();return m;
+}
+async function invSendAccountant(btn){
+  let to=accountant();if(!to){to=await invSetAccountant();if(!to)return}
+  const ok=invAll().filter(x=>x.month===invMonth&&x.kind==="expense"&&x.status==="מאושר");
+  const pend=invAll().filter(x=>x.month===invMonth&&x.kind==="expense"&&x.status==="לבדיקה").length;
+  if(!confirm(`לשלוח ל-${to} את ${ok.length} החשבוניות המאושרות של ${heMonth(invMonth)} (${ils(ok.reduce((s,x)=>s+num(x.amount),0))})?${pend?`\n\nשים לב: ${pend} חשבוניות של החודש עוד לא אושרו ולא יישלחו.`:""}\n\nהמייל יוצא מהג'ימייל שלך תוך שעה.`))return;
+  btn.disabled=true;
+  const {error}=await sb.from("invoice_sends").insert({month:invMonth,to_email:to});
+  toast(error?"לא הצלחתי":"נכנס לתור – יישלח מהג'ימייל שלך תוך שעה");await loadAll();
+}
+async function invToMorning(btn){
+  const ids=invAll().filter(x=>x.month===invMonth&&x.kind==="expense"&&x.status==="מאושר"&&x.morning_state!=="נשלח").map(x=>x.id);
+  if(!ids.length)return;
+  btn.disabled=true;btn.textContent="שולח ל-Morning…";
+  const {data:r,error}=await sb.functions.invoke("invoices",{body:{action:"morning",ids}});
+  toast(error?"השליחה ל-Morning נכשלה":(r&&r.message)||"נשלח");await loadAll();
+}
+
 document.addEventListener("click",async e=>{
   if(e.target.closest("#logout")){try{localStorage.removeItem(FID);localStorage.removeItem("aharon-app-data")}catch(x){}await sb.auth.signOut();return}
   if(e.target.closest("#faceToggle")){if(getFid()){try{localStorage.removeItem(FID)}catch(x){}toast("Face ID כובה")}else if(await canFaceId()){await enableFaceId()}else toast("המכשיר הזה לא תומך ב-Face ID");render();return}
@@ -1621,6 +1747,11 @@ document.addEventListener("click",async e=>{
   const um=e.target.closest("[data-unmerge]");if(um){unmerge(um.dataset.unmerge,um);return}
   if(e.target.closest("[data-voice]")){voiceSheet();return}
   const qd=e.target.closest("[data-quote]");if(qd){openQuote(qd.dataset.quote);return}
+  const iv=e.target.closest("[data-inv]");if(iv){invSheet(iv.dataset.inv);return}
+  const im=e.target.closest("[data-invm]");if(im){invMonth=ymAdd(invMonth||ymNow(),Number(im.dataset.invm));if(filt.invoices==="check")filt.invoices="all";render();return}
+  if(e.target.closest("#invAcc")){e.preventDefault();invSetAccountant();return}
+  if(e.target.closest("#invSend")){invSendAccountant(e.target.closest("#invSend"));return}
+  if(e.target.closest("#invMorning")){invToMorning(e.target.closest("#invMorning"));return}
   const g=e.target.closest("[data-go]");if(g){e.preventDefault();if(g.dataset.f)filt[g.dataset.go]=g.dataset.f;go(g.dataset.go);return}
   const n=e.target.closest("[data-new]");if(n){openSheet(n.dataset.new);return}
   const op=e.target.closest("[data-open-project]");if(op){deeper();curProject=op.dataset.openProject;curJob=null;tab="projects";render();window.scrollTo(0,0);return}
