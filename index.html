@@ -125,7 +125,8 @@ nav button[aria-current=page]{color:var(--accent)}
 .ra button.ok.on{background:var(--good,#11845b);color:#fff}
 .ra button.del{color:var(--bad)}
 .cfilt{display:flex;gap:8px;align-items:center}
-.cfilt select{flex:1;min-width:0}
+.cfilt select{flex:1;min-width:0;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:16px var(--body)}
+@media (max-width:420px){.ra button{width:30px;height:30px;font-size:13px}.ra{gap:1px;padding-left:4px}}
 .talk{display:flex;gap:8px;align-items:center;justify-content:center;width:100%;padding:14px;font-size:17px;border-radius:14px}
 .pair .f label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sec{font:700 15px var(--display);margin:6px 0 0;border-top:1px solid var(--line);padding-top:12px}

@@ -1,6 +1,6 @@
 // Caches the app shell so it opens fast and works without signal; data comes live from the server
 // (the app also keeps its last data in localStorage to show right away).
-const CACHE = "aharon-app-v34";
+const CACHE = "aharon-app-v35";
 const LIB = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js";
 const SHELL = ["./", "index.html", "manifest.json", "icon-192.png", "icon-512.png", "apple-touch-icon.png", LIB];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });
