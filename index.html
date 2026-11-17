@@ -78,9 +78,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .note a{color:var(--accent);font-weight:600}
 .sum{display:flex;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--chip);font-weight:700;font-variant-numeric:tabular-nums}
 .sum.plain{background:none;border-top:1px solid var(--line)}
-nav{position:fixed;inset:auto 0 0 0;z-index:6;background:var(--card);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(7,1fr);
+nav{position:fixed;inset:auto 0 0 0;z-index:6;background:var(--card);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(8,1fr);
   padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
-nav button{background:none;border:0;color:var(--muted);font:600 10.5px var(--body);padding:8px 0 9px;min-width:0;display:grid;justify-items:center;gap:3px;cursor:pointer}
+nav button{background:none;border:0;color:var(--muted);font:600 10px var(--body);padding:8px 0 9px;min-width:0;display:grid;justify-items:center;gap:3px;cursor:pointer}
 nav button svg{width:22px;height:22px}
 nav button[aria-current=page]{color:var(--accent)}
 .sheet{position:fixed;inset:0;z-index:20;background:rgba(5,10,25,.5);display:flex;align-items:flex-end;justify-content:center}
@@ -115,6 +115,17 @@ nav button[aria-current=page]{color:var(--accent)}
 .vhead{display:flex;gap:10px;align-items:center;justify-content:space-between}
 .vhead select{width:auto}
 .vchk{display:flex;gap:6px;align-items:center;font-weight:700}
+.fab{position:fixed;left:max(14px,env(safe-area-inset-left,0px));bottom:calc(74px + env(safe-area-inset-bottom,0px));z-index:7;width:56px;height:56px;border-radius:50%;border:0;background:var(--accent);color:#fff;font-size:24px;box-shadow:0 6px 18px rgba(0,0,0,.25);cursor:pointer;display:grid;place-items:center}
+.fab:active{transform:scale(.94)}
+.rw{display:flex;align-items:stretch;border-top:1px solid var(--line)}
+.rw>.row{border-top:0;flex:1;min-width:0;padding-left:6px}
+.ra{display:flex;align-items:center;gap:2px;padding-left:8px;flex:none}
+.ra button{width:34px;height:34px;border-radius:10px;border:0;background:var(--chip);color:var(--fg);font-size:15px;cursor:pointer;display:grid;place-items:center;padding:0}
+.ra button.ok{background:none;border:2px solid var(--good,#11845b);color:var(--good,#11845b)}
+.ra button.ok.on{background:var(--good,#11845b);color:#fff}
+.ra button.del{color:var(--bad)}
+.cfilt{display:flex;gap:8px;align-items:center}
+.cfilt select{flex:1;min-width:0}
 .talk{display:flex;gap:8px;align-items:center;justify-content:center;width:100%;padding:14px;font-size:17px;border-radius:14px}
 .pair .f label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sec{font:700 15px var(--display);margin:6px 0 0;border-top:1px solid var(--line);padding-top:12px}
@@ -237,6 +248,7 @@ nav button[aria-current=page]{color:var(--accent)}
 </header>
 <main id="main"></main>
 <nav id="nav" aria-label="אזורים"></nav>
+<button class="fab" type="button" data-voice id="fab" aria-label="לדבר – להוסיף משימות, עבודות ופרויקטים">🎤</button>
 </div>
 <div id="splash" hidden><div class="ring"><svg viewBox="0 0 150 150" aria-hidden="true"><circle cx="75" cy="75" r="70" transform="rotate(-90 75 75)"/></svg><img src="icon-512.png" alt=""></div><div class="nm">אהרן מערכות</div><div class="sl">אבטחה ותקשורת בידיים טובות</div></div>
 <div id="sheet" class="sheet" hidden></div>
@@ -258,7 +270,8 @@ const ICON={
  expenses:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/>'
 };
 ICON.projects='<path d="M3 5h7v14H3zM14 5h7v6h-7zM14 15h7v4h-7z"/>';
-const TABS=[["home","בית"],["jobs","עבודות"],["projects","פרויקטים"],["stock","מלאי"],["tasks","משימות"],["debts","חובות"],["expenses","הוצאות"]];
+ICON.clients='<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>';
+const TABS=[["home","בית"],["jobs","עבודות"],["clients","לקוחות"],["projects","פרויקטים"],["stock","מלאי"],["tasks","משימות"],["debts","חובות"],["expenses","הוצאות"]];
 const PT={cam:{l:"מצלמה",c:"#1747b8",s:"C"},net:{l:"נק׳ רשת",c:"#11845b",s:"N"},wifi:{l:"WiFi",c:"#7b3fc4",s:"W"},audio:{l:"אודיו",c:"#d9730d",s:"A"},other:{l:"אחר",c:"#5d6b85",s:"•"}};
 const OWED="חייבים לי", isOwed=d=>d.dir===OWED;
 const TAX=["ביטוח לאומי","מס הכנסה",'מע"מ'];
@@ -526,6 +539,7 @@ function render(){
   if(tab==="jobs"&&curJob){jobView(m);return}
   m.innerHTML=listView(tab);
   const s=$("#q");if(s){s.value=q;s.oninput=()=>{q=s.value.trim();m.querySelector(".list").outerHTML=listBody(tab)}}
+  const cs=$("#cfSel");if(cs)cs.onchange=()=>{filtC[tab]=cs.value;render()};
 }
 function docRow(d){
   return `<a class="row" href="${esc(d.url||"#")}" target="_blank" rel="noopener"><span class="t">${esc(d.client||"")}</span><span class="n">${ils(d.amount)}</span><span class="s">${esc(d.type_name)} ${esc(d.number)} · ${heDate(d.doc_date)}${d.description?" · "+esc(d.description):""}</span><span class="p"><span class="pill ${d.type===10?"":"bad"}">${d.type===10?"הצעה":"פתוחה"}</span></span></a>`;
@@ -564,7 +578,6 @@ function home(){
    <div class="date">${esc(heLongDate())}</div>
    <div class="sumline">${bits.length?"היום: "+bits.join(" · "):"אין משימות פתוחות להיום. יום נקי 👌"}</div>
   </section>
-  <button class="btn talk" type="button" data-voice>🎤 לדבר – להוסיף משימות, עבודות ופרויקטים</button>
   <div class="tiles">
    <button class="tile ${owedSum?'good':''}" data-go="debts" data-f="owed"><span>חייבים לי</span><b>${ils(owedSum)}</b><span>${P.inv.length} חשבוניות · ${P.jobs.length} עבודות · ${P.sheet.length} מהגיליון</span></button>
    <button class="tile ${debtSum?'warn':''}" data-go="debts" data-f="open"><span>אני חייב</span><b>${ils(debtSum)}</b><span>${open.length} חובות פתוחים</span></button>
@@ -682,9 +695,40 @@ const FILTERS={
  debts:[["open","אני חייב"],["owed","חייבים לי"],["tax","מיסים"],["paid","שולם"],["all","הכל"]],
  expenses:[["all","הכל"],["fixed","קבועות"],["project","עלויות פרויקטים"],["month","החודש"]]
 };
+const CF={jobs:"client",tasks:"client",expenses:"for_job",debts:"name"};
+const filtC={};
+function cfiltHtml(k){
+  const names=[...new Set(data[k].map(x=>canon(x[CF[k]])).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"he"));
+  const cur=filtC[k]||"";
+  return `<div class="cfilt"><select id="cfSel" aria-label="לקוח"><option value="">👤 כל הלקוחות</option><option value="__group" ${cur==="__group"?"selected":""}>📂 מקובץ לפי לקוח</option>${names.map(n=>`<option ${n===cur?"selected":""}>${esc(n)}</option>`).join("")}</select>${cur&&cur!=="__group"?`<button class="btn ghost" type="button" data-client="${esc(cur)}">כרטיס לקוח</button>`:""}</div>`;
+}
+function whoSheet(k,id){
+  const x=data[k].find(r=>r.id===id);if(!x)return;const f=CF[k];const el=$("#sheet");
+  const names=clientsAll().map(c=>c.name).sort((a,b)=>a.localeCompare(b,"he"));
+  el.innerHTML=`<form id="edit" novalidate><h3>👤 למי זה קשור</h3><div class="note">${esc(k==="tasks"?x.title:(x.vendor||x.cat||""))}</div>
+   <div class="f"><label for="whoIn">לקוח / פרויקט</label><input id="whoIn" type="text" list="whoList" value="${esc(x[f]||"")}" autocomplete="off"><datalist id="whoList">${names.map(n=>`<option value="${esc(n)}">`).join("")}</datalist></div>
+   <div class="actions"><button class="btn" type="submit">שמירה</button>${x[f]?`<button class="btn ghost" type="button" id="whoClr">בלי שיוך</button>`:""}<button class="btn ghost" type="button" data-close>ביטול</button></div></form>`;
+  el.hidden=false;setTimeout(()=>$("#whoIn").focus(),50);
+  const save=async v=>{const {error}=await sb.from(k).update({[f]:v||null,updated_at:new Date().toISOString()}).eq("id",id);toast(error?"לא נשמר":"נשמר");el.hidden=true;await loadAll()};
+  $("#edit").onsubmit=e=>{e.preventDefault();save($("#whoIn").value.trim())};
+  const c=$("#whoClr");if(c)c.onclick=()=>save("");
+  el.onclick=e=>{if(e.target===el||e.target.closest("[data-close]"))el.hidden=true};
+}
+async function rowAct(b){
+  const k=b.dataset.k,id=b.dataset.id,x=data[k].find(r=>r.id===id),a=b.dataset.act;if(!x)return;
+  if(a==="edit"){openSheet(k,id);return}
+  if(a==="who"){whoSheet(k,id);return}
+  if(a==="del"){const name=x.title||x.name||x.vendor||x.cat||"";if(!confirm(`למחוק את "${name}"? אי אפשר לבטל.`))return;
+    b.disabled=true;const {error}=await sb.from(k).delete().eq("id",id);toast(error?"המחיקה נכשלה":"נמחק");await loadAll();return}
+  if(a==="done"){b.disabled=true;const now=new Date().toISOString();
+    const upd=k==="tasks"?{done:x.done==="בוצע"?"פתוח":"בוצע"}:{paid:x.paid==="שולם"?"פתוח":"שולם"};
+    const {error}=await sb.from(k).update({...upd,updated_at:now}).eq("id",id);
+    toast(error?"לא נשמר":k==="tasks"?(upd.done==="בוצע"?"✔ בוצע":"הוחזר לפתוח"):(upd.paid==="שולם"?"✔ סומן כשולם":"הוחזר לפתוח"));await loadAll()}
+}
 function pass(k,x){
   const f=filt[k]||FILTERS[k][0][0];
   if(q){const s=Object.values(x).join(" ");if(!s.includes(q))return false}
+  const cf=filtC[k];if(cf&&cf!=="__group"&&CF[k]&&canon(x[CF[k]])!==cf)return false;
   switch(k+":"+f){
    case "jobs:owed":return owedOf(x)>0&&!invMatches().has(x.id); case "jobs:unknown":return !x.paid||x.paid==="לא ידוע"; case "jobs:paid":case "jobs:done":return jobDone(x);
    case "jobs:warranty":return warrantyOf(x)==="on"; case "jobs:expired":return warrantyOf(x)==="off";
@@ -711,9 +755,10 @@ function sorted(k){
 function listView(k){
   const cur=filt[k]||FILTERS[k][0][0];
   const extra=k==="stock"?`<div class="bar"><label class="btn" style="flex:1;text-align:center;cursor:pointer">🤖 צילום מדבקה (AI)<input type="file" accept="image/*" id="aiFile" hidden></label><button class="btn ghost" type="button" id="scanBtn">📷 ברקוד</button></div><div class="bar"><button class="btn ghost" type="button" id="pullItems" style="flex:1">משיכת פריטים מ-Morning</button></div>`:"";
-  return `<div class="bar"><h2 style="flex:1">${TABS.find(t=>t[0]===k)[1]}</h2>${k==="jobs"?`<button class="btn ghost" type="button" data-go="clients">לקוחות</button>`:""}${k==="expenses"?`<button class="btn ghost" type="button" data-go="invoices">חשבוניות${invToCheck().length?" ("+invToCheck().length+")":""}</button>`:""}${["jobs","tasks","projects"].includes(k)?`<button class="btn ghost" type="button" data-voice aria-label="לדבר">🎤</button>`:""}<button class="btn${k==="stock"?" ghost":""}" type="button" data-new="${k}">+ ${SCHEMA[k].title}</button></div>
+  return `<div class="bar"><h2 style="flex:1">${TABS.find(t=>t[0]===k)[1]}</h2>${k==="expenses"?`<button class="btn ghost" type="button" data-go="invoices">חשבוניות${invToCheck().length?" ("+invToCheck().length+")":""}</button>`:""}<button class="btn${k==="stock"?" ghost":""}" type="button" data-new="${k}">+ ${SCHEMA[k].title}</button></div>
   ${extra}
   <div class="bar"><input id="q" type="search" placeholder="חיפוש" aria-label="חיפוש"></div>
+  ${CF[k]?cfiltHtml(k):""}
   <div class="filters" role="group" aria-label="סינון">${FILTERS[k].map(([v,l])=>`<button type="button" class="chipbtn" data-filt="${v}" aria-pressed="${v===cur}">${l}</button>`).join("")}</div>
   ${listBody(k)}`;
 }
@@ -727,6 +772,11 @@ const EMPTY={
 };
 function listBody(k){
   const items=sorted(k).filter(x=>pass(k,x));
+  if(filtC[k]==="__group"&&CF[k]&&!(k==="debts"&&filt.debts==="owed")){const g=new Map();items.forEach(x=>{const c=canon(x[CF[k]])||"";if(!g.has(c))g.set(c,[]);g.get(c).push(x)});
+    if(!items.length)return `<div class="list"><div class="empty">אין תוצאות לסינון הזה.</div></div>`;
+    const money=x=>k==="jobs"?owedOf(x):num(x.amount);
+    return `<div class="list">${[...g.entries()].sort((a,b)=>!a[0]?1:!b[0]?-1:a[0].localeCompare(b[0],"he")).map(([c,a])=>{const m=a.reduce((s,x)=>s+money(x),0);
+      return `<div class="grp"><span>${c?`<a href="#" data-client="${esc(c)}">${esc(c)}</a>`:"בלי לקוח"} · ${a.length}</span><span>${k==="tasks"?"":ils(m)}</span></div>${a.map(x=>row(k,x)).join("")}`}).join("")}</div>`}
   if(!items.length&&!(k==="debts"&&filt.debts==="owed")&&!(k==="jobs"&&filt.jobs==="owed"&&openInvoices().length))return `<div class="list"><div class="empty">${data[k].length?"אין תוצאות לסינון הזה.":EMPTY[k]}</div></div>`;
   let total="";
   if(k==="jobs"){const inv=(filt.jobs==="owed")?openInvoices():[];total=`<div class="sum"><span>${items.length} עבודות · חייבים</span><span>${ils(items.reduce((a,j)=>a+owedOf(j),0))}</span></div>`;
@@ -767,7 +817,15 @@ function row(k,x){
   if(k==="jobs"){const ic=[(x.photos||[]).length?`📷${(x.photos||[]).length}`:"",x.signature_path?"✍️":"",x.warranty_no?`🛡️${x.warranty_no}`:""].filter(Boolean).join(" ");
     return `<button type="button" class="row" data-open-job="${esc(x.id)}"><span class="t">${esc(t)}</span><span class="n">${n}</span><span class="s">${esc(s)}${ic?" · "+ic:""}</span><span class="p">${p}</span></button>`}
   if(k==="projects")return `<button type="button" class="row" data-open-project="${esc(x.id)}"><span class="t">${esc(t)}</span><span class="n"></span><span class="s">${esc(s)}</span><span class="p">${p}</span></button>`;
-  return `<button type="button" class="row" data-edit="${k}" data-id="${esc(x.id)}"><span class="t">${esc(t)}</span><span class="n">${n}</span><span class="s">${esc(s)}</span><span class="p">${p}</span></button>`;
+  const main=`<button type="button" class="row" data-edit="${k}" data-id="${esc(x.id)}"><span class="t">${esc(t)}</span><span class="n">${n}</span><span class="s">${esc(s)}</span><span class="p">${p}</span></button>`;
+  if(!["tasks","debts","expenses"].includes(k))return main;
+  const id=esc(x.id),done=k==="tasks"?x.done==="בוצע":x.paid==="שולם";
+  const b=[];
+  if(k!=="expenses")b.push(`<button type="button" class="ok${done?" on":""}" data-act="done" data-k="${k}" data-id="${id}" aria-label="${k==="tasks"?(done?"להחזיר לפתוח":"בוצע"):(done?"להחזיר ללא שולם":"שולם")}">✓</button>`);
+  b.push(`<button type="button" data-act="edit" data-k="${k}" data-id="${id}" aria-label="עריכה">✏️</button>`);
+  if(k!=="debts")b.push(`<button type="button" data-act="who" data-k="${k}" data-id="${id}" aria-label="שיוך ללקוח">👤</button>`);
+  if(!x.sheet_key)b.push(`<button type="button" class="del" data-act="del" data-k="${k}" data-id="${id}" aria-label="מחיקה">🗑</button>`);
+  return `<div class="rw">${main}<div class="ra">${b.join("")}</div></div>`;
 }
 
 /* ---------- clients: autocomplete + keep details in sync by name ---------- */
@@ -1853,6 +1911,7 @@ document.addEventListener("click",async e=>{
   if(e.target.closest("#ptCancel")){const p=curP();selPt=null;drawMarkers(p);selBox(p);return}
   if(e.target.closest("#sharePlan")){sharePlan(curP());return}
   if(e.target.closest("#textProj")||e.target.closest("#textProj2")){textSheet(curP());return}
+  const ra=e.target.closest("[data-act]");if(ra){rowAct(ra);return}
   const td=e.target.closest("[data-taskdone]");if(td){td.disabled=true;td.textContent="✓";
     const {error}=await sb.from("tasks").update({done:"בוצע",updated_at:new Date().toISOString()}).eq("id",td.dataset.taskdone);
     toast(error?"לא נשמר. נסה שוב.":"✔ המשימה בוצעה");await loadAll();return}
