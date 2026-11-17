@@ -7,7 +7,10 @@
 var MAIL_FN = 'https://pipynokkdtvkkzcgatlq.supabase.co/functions/v1/issue';
 
 function enableMailer() {
-  var url = ScriptApp.getService().getUrl();
+  // When run from the editor getUrl() returns the /dev URL, which needs a login. Use the deployment's /exec URL.
+  var url = String(ScriptApp.getService().getUrl() || '');
+  var EXEC = PropertiesService.getScriptProperties().getProperty('MAILER_EXEC_URL');
+  if (EXEC) url = EXEC;
   if (!url) throw new Error('קודם צריך לפרסם את הסקריפט כ-Web app (Deploy → New deployment)');
   var secret = Utilities.getUuid() + Utilities.getUuid();
   PropertiesService.getScriptProperties().setProperty('MAILER_SECRET', secret);
