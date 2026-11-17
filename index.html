@@ -1204,7 +1204,7 @@ async function jobView(m){
 
    <h2>חשבונית ותעודת אחריות</h2>
    <div class="list" style="padding:12px;display:grid;gap:8px">
-    <div class="pair"><div class="f"><label for="jWno">מס׳ תעודת אחריות</label><input id="jWno" type="text" inputmode="numeric" dir="ltr" placeholder="1000XX" value="${esc(j.warranty_no||"")}"></div>
+    <div class="pair"><div class="f"><label for="jWno">מס׳ תעודת אחריות</label><input id="jWno" type="text" inputmode="numeric" dir="ltr" placeholder="מהתעודה המודפסת" value="${esc(j.warranty_no||"")}"></div>
      <div class="f"><label for="jMail">מייל הלקוח</label><input id="jMail" type="email" dir="ltr" autocapitalize="off" value="${esc(j.client_email||clientMail(j)||"")}"></div></div>
     ${j.mail_sent_at?`<div class="note" style="margin:0">✉️ נשלח ל-${esc(j.mail_to||"")} · ${new Date(j.mail_sent_at).toLocaleString("he-IL",{day:"numeric",month:"numeric",year:"2-digit",hour:"2-digit",minute:"2-digit"})}</div>`:""}
     <div class="bar" style="margin:0">${j.warranty_path?`<button class="btn ghost" type="button" data-jfile="${esc(j.warranty_path)}" style="flex:1">🛡️ התעודה</button>`:""}${j.invoice_path?`<button class="btn ghost" type="button" data-jfile="${esc(j.invoice_path)}" style="flex:1">📄 החשבונית</button>`:""}</div>
@@ -1299,6 +1299,7 @@ async function issueSheet(j){
     <div class="f"><label for="iAddr">כתובת ההתקנה</label><input id="iAddr" type="text" value="${esc(j.address||j.place||"")}"></div></div>
    <label class="vchk" style="margin-top:10px;font-size:16px"><input type="checkbox" id="iWon" ${wOn?"checked":""}> לצרף תעודת אחריות</label>
    <div id="iW">
+   <div class="note" style="margin:0">נתת ללקוח תעודה מודפסת? רשום כאן את המספר שלה. אחרת המספר הבא בסדרה הדיגיטלית (300001 ואילך) ממולא לבד.</div>
    <div class="pair"><div class="f"><label for="iWno">מס׳ תעודה</label><input id="iWno" type="text" inputmode="numeric" dir="ltr" value="${esc(wNo)}"></div>
     <div class="f"><label for="iWdate">תאריך התקנה</label><input id="iWdate" type="date" value="${esc(j.date||today())}"></div></div>
    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">${W_ITEMS.map(t=>`<label class="vchk"><input type="checkbox" data-wi="${esc(t)}" ${items.includes(t)?"checked":""}> ${esc(t)}</label>`).join("")}</div>

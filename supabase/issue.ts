@@ -188,8 +188,9 @@ Deno.serve(async (req) => {
 
     if (action === "next") {
       const {data} = await sb.from("jobs").select("warranty_no").not("warranty_no", "is", null);
-      const nums = (data || []).map((r: any) => Number(String(r.warranty_no).replace(/\D/g, ""))).filter((n: number) => n >= 100001 && n < 200000);
-      return json({ok: true, next: String(nums.length ? Math.max(...nums) + 1 : 100001)});
+      // digital certificates (sent by mail from the app) have their own series 300001+; printed ones are 100001-100100 and typed in by hand
+      const nums = (data || []).map((r: any) => Number(String(r.warranty_no).replace(/\D/g, ""))).filter((n: number) => n >= 300001 && n < 400000);
+      return json({ok: true, next: String(nums.length ? Math.max(...nums) + 1 : 300001)});
     }
 
     const {data: job, error: je} = await sb.from("jobs").select("*").eq("id", b.job_id).single();
