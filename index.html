@@ -1188,7 +1188,7 @@ async function jobView(m){
   m.innerHTML=`<div class="bar"><button class="btn ghost" type="button" id="backJob">→ עבודות</button><h2 style="flex:1;min-width:0;overflow-wrap:anywhere">${j.client?`<a href="#" data-client="${esc(canon(j.client))}">${esc(j.client)}</a>`:"עבודה"}</h2><button class="btn ghost" type="button" data-edit="jobs" data-id="${esc(j.id)}">פרטים</button></div>
    <div class="note">${esc([j.place,j.address,j.date?heDate(j.date):"",j.phone].filter(Boolean).join(" · "))||"—"}${j.price?` · ${ils(j.price)}`:""} ${o>0?`<span class="pill bad">חייב ${ils(o)}</span>`:j.paid==="כן"?`<span class="pill good">שולם</span>`:""}</div>
    ${wazeBtn(j.address)}
-   <div class="bar" style="margin:8px 0 0"><button class="btn" type="button" id="issueTop" style="flex:1">${j.morning_doc_id?"✉️ שליחת חשבונית במייל":"🧾 חשבונית"}</button><label class="btn ghost" style="flex:1;text-align:center;cursor:pointer" for="jPhotos">📷 הוספת תמונות</label></div>
+   <div class="bar" style="margin:8px 0 0"><button class="btn" type="button" id="issueTop" style="flex:1">${j.morning_doc_id?"✉️ שליחת חשבונית במייל":"🧾 חשבונית"}</button><button class="btn ghost" type="button" id="issueTopW" style="flex:1">🧾+🛡️ עם אחריות</button><label class="btn ghost" style="flex:1;text-align:center;cursor:pointer" for="jPhotos">📷 הוספת תמונות</label></div>
    <h2>תמונות (${photos.length})</h2>
    <div class="thumbs" id="thumbs">${photos.map((p,i)=>`<button type="button" data-photo="${i}" aria-label="תמונה ${i+1}"><img alt="" data-path="${esc(p.path)}"></button>`).join("")}
     <label><span>📷<br>הוספת תמונות</span><input type="file" accept="image/*" multiple id="jPhotos" hidden></label></div>
@@ -1215,16 +1215,14 @@ async function jobView(m){
     ${j.mail_sent_at?`<div class="note" style="margin:0">✉️ נשלח ל-${esc(j.mail_to||"")} · ${new Date(j.mail_sent_at).toLocaleString("he-IL",{day:"numeric",month:"numeric",year:"2-digit",hour:"2-digit",minute:"2-digit"})}</div>`:""}
     <div class="bar" style="margin:0">${j.warranty_path?`<button class="btn ghost" type="button" data-jfile="${esc(j.warranty_path)}" style="flex:1">🛡️ התעודה</button>`:""}${j.invoice_path?`<button class="btn ghost" type="button" data-jfile="${esc(j.invoice_path)}" style="flex:1">📄 החשבונית</button>`:""}</div>
     ${j.morning_doc_id?"":`<label class="vchk" style="margin:0"><input type="checkbox" id="jLater" ${j.bill_later?"checked":""}> ממתין לחשבונית מרוכזת (אוציא חשבונית אחת על כמה עבודות מכרטיס הלקוח)</label>`}
-    <button class="btn" type="button" id="issueBtn" style="padding:14px">${j.morning_doc_id?"✉️ שליחת החשבונית + תעודת אחריות במייל":"🧾 הפקת חשבונית ב-Morning + תעודת אחריות במייל"}</button>
+    <div class="bar" style="margin:0"><button class="btn" type="button" id="issueBtn" style="flex:1;padding:14px">${j.morning_doc_id?"✉️ שליחת החשבונית במייל":"🧾 חשבונית בלבד"}</button><button class="btn" type="button" id="issueBtnW" style="flex:1;padding:14px">🧾+🛡️ חשבונית + תעודת אחריות</button></div>
    </div>
-   <h2>תשלום ושליחה ב-WhatsApp</h2>
-   <div class="f"><label for="jDoc">מסמך מ-Morning לשליחה ללקוח</label><select id="jDoc"><option value="">— בלי מסמך —</option>
+   <div class="f"><label for="jDoc">קישור לחשבונית שכבר קיימת ב-Morning</label><select id="jDoc"><option value="">— בלי מסמך —</option>
      ${mine.length?`<optgroup label="של הלקוח הזה">${mine.map(opt).join("")}</optgroup>`:""}<optgroup label="מסמכים אחרונים">${other.map(opt).join("")}</optgroup></select></div>
-   <div class="f"><label for="jPay">קישור לתשלום (אם יש – ביט, פייבוקס, דף תשלום)</label><input id="jPay" type="url" dir="ltr" value="${esc(j.pay_link||"")}" placeholder="https://"></div>
+   <div hidden><div class="f"><label for="jPay">קישור לתשלום (אם יש – ביט, פייבוקס, דף תשלום)</label><input id="jPay" type="url" dir="ltr" value="${esc(j.pay_link||"")}" placeholder="https://"></div>
 
-   <div class="bar"><a class="btn wa" id="waBtn" style="flex:1;text-align:center;text-decoration:none" target="_blank" rel="noopener">שליחה ב-WhatsApp</a></div>
+   <div class="bar"><a class="btn wa" id="waBtn" style="flex:1;text-align:center;text-decoration:none" target="_blank" rel="noopener">שליחה ב-WhatsApp</a></div></div>
    <div class="bar"><button class="btn ghost" type="button" id="shareReport" style="flex:1">שיתוף אישור ביצוע חתום (תמונה)</button></div>
-   ${waPhone(j.phone)?"":`<div class="note">אין מספר טלפון לעבודה הזו. הוסף אותו ב"פרטים" כדי שההודעה תיפתח ישר בצ'אט של הלקוח.</div>`}
    <h4 class="sec">מערכת הקלטה (NVR / DVR)</h4>
    <div class="pair">${[["nvr_model","דגם"],["nvr_serial","מספר סידורי (S/N)"],["nvr_user","שם משתמש"],["nvr_pass","סיסמה"],["nvr_code","קוד מצלמות"],["nvr_ip","IP קבוע"],["nvr_qr","QR / P2P"]].map(([k,l])=>`<div class="f"><label for="j_${k}">${l}</label><input id="j_${k}" data-nvr="${k}" type="text" dir="ltr" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" ${k==="nvr_pass"||k==="nvr_code"?'class="secret"':""} value="${esc(j[k]||"")}"></div>`).join("")}</div>
    <div class="note" style="font-size:12.5px">נשמר אוטומטית. הסיסמה וקוד המצלמות מוסתרים – לחיצה מציגה אותם. הפרטים האלה לא נשלחים ללקוח.</div>`;
@@ -1240,7 +1238,7 @@ async function jobView(m){
   $("#jPay").onchange=()=>save({pay_link:$("#jPay").value.trim()||null});
   $("#jWno").onchange=async()=>{const v=$("#jWno").value.replace(/\D/g,"");const d=v&&data.jobs.find(x=>x.id!==j.id&&String(x.warranty_no||"")===v);if(d){toast(`תעודה ${v} כבר רשומה על ${d.client}`);$("#jWno").value=j.warranty_no||"";return}$("#jWno").value=v;await save({warranty_no:v||null})};
   $("#jMail").onchange=()=>save({client_email:$("#jMail").value.trim()||null});
-  $("#issueBtn").onclick=()=>issueSheet(j);$("#issueTop").onclick=()=>issueSheet(j);
+  $("#issueBtn").onclick=()=>issueSheet(j,false);$("#issueTop").onclick=()=>issueSheet(j,false);$("#issueBtnW").onclick=()=>issueSheet(j,true);$("#issueTopW").onclick=()=>issueSheet(j,true);
   const jl=$("#jLater");if(jl)jl.onchange=()=>{save({bill_later:jl.checked});toast(jl.checked?"העבודה ממתינה לחשבונית מרוכזת":"בוטל")};
   document.querySelectorAll("[data-jfile]").forEach(b=>b.onclick=()=>openJobFile(b.dataset.jfile));
   $("#jPhotos").onchange=e=>addPhotos(j,[...e.target.files]);
@@ -1273,9 +1271,9 @@ function openPdf64(b64,w){
   const bin=atob(b64),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
   const url=URL.createObjectURL(new Blob([u],{type:"application/pdf"}));if(w)w.location=url;else window.open(url,"_blank");
 }
-async function issueSheet(j){
+async function issueSheet(j,withW){
   const el=$("#sheet");const linked=data.morning_docs.find(d=>d.id===j.morning_doc_id);
-  let wNo=j.warranty_no||"";const wOn=!!wNo||!j.kind||j.kind==="התקנה";
+  let wNo=j.warranty_no||"";const wOn=withW===undefined?(!!wNo||!j.kind||j.kind==="התקנה"):!!withW;
   if(!wNo&&wOn){try{const {data:r}=await sb.functions.invoke("issue",{body:{action:"next"}});if(r&&r.next)wNo=r.next}catch(e){}}
   const items=(j.warranty_items&&j.warranty_items.length)?j.warranty_items:guessItems(j);
   const sum=String(j.summary??j.work??"").trim();
@@ -1285,7 +1283,7 @@ async function issueSheet(j){
      <div class="f"><label>מחיר ליח׳ ₪</label><input data-l="price" type="number" inputmode="decimal" step="any" value="${esc(l.price??"")}"></div>
      <button class="btn ghost" type="button" data-rmline aria-label="מחיקת שורה" style="padding:8px 0">✕</button></div>`;
   const mode0=linked?"linked":"new";
-  el.innerHTML=`<form id="edit" novalidate><h3>🧾 חשבונית + תעודת אחריות</h3>
+  el.innerHTML=`<form id="edit" novalidate><h3>${wOn?"🧾 חשבונית + תעודת אחריות":"🧾 חשבונית"}</h3>
    <div class="note">המייל יוצא מהג'ימייל של אהרן מערכות, עם החשבונית ותעודת האחריות כקבצי PDF מצורפים. החשבונית מופקת ב-Morning ונשמרת שם כרגיל.</div>
    <div class="f"><label for="iMode">מה לצרף</label><select id="iMode">
      <option value="new" ${mode0==="new"?"selected":""}>חשבונית חדשה ב-Morning + תעודת אחריות</option>
