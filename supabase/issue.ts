@@ -217,6 +217,46 @@ Deno.serve(async (req) => {
       return json(out);
     }
 
+    if (action === "issue_multi") {
+      const ids: string[] = Array.isArray(b.job_ids) ? b.job_ids.map(String) : [];
+      if (!ids.length) throw new Error("לא נבחרו עבודות");
+      const {data: jobs} = await sb.from("jobs").select("*").in("id", ids);
+      if (!jobs || jobs.length !== ids.length) throw new Error("חלק מהעבודות לא נמצאו");
+      const linked = jobs.find((x: any) => x.morning_doc_id);
+      if (linked) throw new Error(`לעבודה של ${linked.date || ""} כבר מקושרת חשבונית`);
+      const to = String(b.email || "").trim();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) throw new Error("צריך כתובת מייל תקינה של הלקוח");
+      const mailUrl = await setting("mailer_url"), mailSecret = await setting("mailer_secret");
+      if (!mailUrl || !mailSecret) throw new Error("שליחת המייל עוד לא מחוברת (סקריפט הג'ימייל)");
+      const now = new Date().toISOString();
+      const mtok = await morningToken();
+      const {body, total, type} = docBody(b, await findClient(mtok, b.client || jobs[0].client));
+      const created = await mcall(mtok, "POST", "/documents", body);
+      const docId = created.id;
+      const docName = `${TYPES[type]} ${created.number ?? ""}`.trim();
+      for (const x of jobs) await sb.from("jobs").update({morning_doc_id: docId, receipt: docName, client_email: to, bill_later: false, updated_at: now}).eq("id", x.id);
+      await sb.from("morning_docs").upsert({id: docId, number: String(created.number ?? ""), type, type_name: TYPES[type], status: type === 320 ? 1 : 0,
+        doc_date: body.date, client: body.client.name, description: body.description || null, amount: total, currency: "ILS",
+        url: created.url?.he || created.url?.origin || null, client_email: to, client_phone: jobs[0].phone || null, synced_at: now});
+      const inv = await docPdf(mtok, docId, created);
+      const invPath = `multi/${docId}.pdf`;
+      await sb.storage.from("jobfiles").upload(invPath, inv.bytes, {contentType: "application/pdf", upsert: true});
+      const files = [{path: invPath, name: fname(`${docName} - אהרן מערכות.pdf`)}];
+      const wNos: string[] = [];
+      if (b.attach_warranties) for (const x of jobs) if (x.warranty_path) { files.push({path: x.warranty_path, name: fname(`תעודת אחריות ${x.warranty_no || ""} - אהרן מערכות.pdf`)}); if (x.warranty_no) wNos.push(String(x.warranty_no)); }
+      for (const x of jobs) await sb.from("jobs").update({invoice_path: invPath}).eq("id", x.id);
+      const att = [];
+      for (const f of files) { const {data: u} = await sb.storage.from("jobfiles").createSignedUrl(f.path, 900); att.push({url: u?.signedUrl, name: f.name}); }
+      const first = String(b.client || jobs[0].client || "").trim().split(/\s+/)[0] || "";
+      const subject = docName + (wNos.length ? " ותעודות אחריות" : "") + " – אהרן מערכות";
+      const mr = await fetch(mailUrl, {method: "POST", headers: {"Content-Type": "application/json"}, redirect: "follow",
+        body: JSON.stringify({secret: mailSecret, to, subject, html: mailHtml({first, docName, wNo: wNos.join(", "), summary: String(b.mail_text || "").trim()}), attachments: att})});
+      const mt = await mr.text(); let md: any = {}; try { md = JSON.parse(mt); } catch (_) { /* html */ }
+      if (!md.ok) throw new Error(`החשבונית הופקה (${docName}) אבל המייל לא נשלח: ` + (md.error || mt.slice(0, 160) || mr.status));
+      for (const x of jobs) await sb.from("jobs").update({mail_sent_at: new Date().toISOString(), mail_to: to}).eq("id", x.id);
+      return json({ok: true, message: `נשלח ל-${to}: ${docName} על ${jobs.length} עבודות`, number: inv.number});
+    }
+
     if (action === "issue" || action === "send") {
       const to = String(b.email || "").trim();
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) throw new Error("צריך כתובת מייל תקינה של הלקוח");
