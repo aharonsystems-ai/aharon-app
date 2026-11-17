@@ -1219,9 +1219,10 @@ async function jobView(m){
    </div>
    <div class="f"><label for="jDoc">קישור לחשבונית שכבר קיימת ב-Morning</label><select id="jDoc"><option value="">— בלי מסמך —</option>
      ${mine.length?`<optgroup label="של הלקוח הזה">${mine.map(opt).join("")}</optgroup>`:""}<optgroup label="מסמכים אחרונים">${other.map(opt).join("")}</optgroup></select></div>
-   <div hidden><div class="f"><label for="jPay">קישור לתשלום (אם יש – ביט, פייבוקס, דף תשלום)</label><input id="jPay" type="url" dir="ltr" value="${esc(j.pay_link||"")}" placeholder="https://"></div>
+   <h2>שליחה ב-WhatsApp</h2>
+   <div class="f"><label for="jPay">קישור לתשלום (אם יש – ביט, פייבוקס, דף תשלום)</label><input id="jPay" type="url" dir="ltr" value="${esc(j.pay_link||"")}" placeholder="https://"></div>
 
-   <div class="bar"><a class="btn wa" id="waBtn" style="flex:1;text-align:center;text-decoration:none" target="_blank" rel="noopener">שליחה ב-WhatsApp</a></div></div>
+   <div class="bar"><a class="btn wa" id="waBtn" style="flex:1;text-align:center;text-decoration:none" target="_blank" rel="noopener">שליחה ב-WhatsApp</a></div>
    <div class="bar"><button class="btn ghost" type="button" id="shareReport" style="flex:1">שיתוף אישור ביצוע חתום (תמונה)</button></div>
    <h4 class="sec">מערכת הקלטה (NVR / DVR)</h4>
    <div class="pair">${[["nvr_model","דגם"],["nvr_serial","מספר סידורי (S/N)"],["nvr_user","שם משתמש"],["nvr_pass","סיסמה"],["nvr_code","קוד מצלמות"],["nvr_ip","IP קבוע"],["nvr_qr","QR / P2P"]].map(([k,l])=>`<div class="f"><label for="j_${k}">${l}</label><input id="j_${k}" data-nvr="${k}" type="text" dir="ltr" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" ${k==="nvr_pass"||k==="nvr_code"?'class="secret"':""} value="${esc(j[k]||"")}"></div>`).join("")}</div>
