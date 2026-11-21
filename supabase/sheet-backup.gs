@@ -24,6 +24,7 @@ function backupSync() {
   if (res.getResponseCode() !== 200) throw new Error('גיבוי: ' + res.getResponseCode() + ' ' + res.getContentText().slice(0, 300));
   var d = JSON.parse(res.getContentText());
   var ss = SpreadsheetApp.openById(BACKUP_FILE);
+  ss.setSpreadsheetTimeZone(Session.getScriptTimeZone()); // dates written here must not shift a day
   var day = function (v) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v || ''); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : ''; };
   var v = function (x) { return x === null || x === undefined ? '' : x; };
   var yes = function (x) { return x === true ? 'כן' : ''; };
@@ -81,6 +82,7 @@ function backupPut_(ss, name, head, rows, dateCols, numCols) {
   sh.getRange(2, 1, last, width).clearContent();
   sh.getRange(1, 1, 1, head.length).setValues([head]);
   if (rows.length) {
+    var ph = head.indexOf('טלפון'); if (ph >= 0) sh.getRange(2, ph + 1, rows.length, 1).setNumberFormat('@'); // keep the leading 0
     sh.getRange(2, 1, rows.length, head.length).setValues(rows).setFontFamily('Arial').setHorizontalAlignment('right').setVerticalAlignment('top').setWrap(true);
     dateCols.forEach(function (c) { sh.getRange(2, c, rows.length, 1).setNumberFormat('dd/mm/yyyy'); });
     numCols.forEach(function (c) { sh.getRange(2, c, rows.length, 1).setNumberFormat('#,##0'); });
