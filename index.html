@@ -6,6 +6,7 @@
 <title>אהרן מערכות · ניהול</title>
 <meta name="robots" content="noindex,nofollow">
 <meta name="theme-color" content="#0c1d47">
+<script>try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -23,10 +24,15 @@
   --display:"Rubik","Heebo",Arial,sans-serif; --body:"Heebo",Arial,sans-serif;
   color-scheme:light;
 }
-@media (prefers-color-scheme:dark){:root{
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
   --bg:#0b1222; --card:#131d33; --fg:#e7ecf6; --muted:#9aa8c3; --line:#26324d;
   --navy:#0a1630; --accent:#6f9bff; --accent-ink:#0b1222;
   --good:#3ccf91; --warn:#f0a73a; --bad:#ff7b6b; --chip:#1d2a47; color-scheme:dark}}
+:root[data-theme=dark]{
+  --bg:#0b1222; --card:#131d33; --fg:#e7ecf6; --muted:#9aa8c3; --line:#26324d;
+  --navy:#0a1630; --accent:#6f9bff; --accent-ink:#0b1222;
+  --good:#3ccf91; --warn:#f0a73a; --bad:#ff7b6b; --chip:#1d2a47; color-scheme:dark}
+:root[data-theme=light]{color-scheme:light}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html,body{margin:0}
@@ -263,7 +269,7 @@ details.jcard>summary::after{content:"▾";color:var(--muted);transition:transfo
 <div id="app" hidden>
 <header class="top">
   <div class="brand"><img src="icon-192.png" alt=""><div><h1>אהרן מערכות</h1><small id="status">טוען…</small></div></div>
-  <button class="iconbtn" type="button" id="syncBtn">סנכרון Morning</button>
+  <div style="display:flex;gap:6px"><button class="iconbtn" type="button" id="themeBtn" aria-label="מצב תצוגה">🌓</button><button class="iconbtn" type="button" id="syncBtn">סנכרון Morning</button></div>
 </header>
 <main id="main"></main>
 <nav id="nav" aria-label="אזורים"></nav>
@@ -2044,6 +2050,12 @@ document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#sheet").hidden
 if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(()=>{})}
 boot();
 })();
+
+/* theme: auto (follows phone) → light → dark */
+(function(){const b=document.getElementById("themeBtn");if(!b)return;const lab={auto:"🌓",light:"☀️",dark:"🌙"};
+ const get=()=>{try{return localStorage.getItem("theme")||"auto"}catch(e){return "auto"}};
+ const apply=t=>{if(t==="auto")document.documentElement.removeAttribute("data-theme");else document.documentElement.setAttribute("data-theme",t);b.textContent=lab[t];b.title=t==="auto"?"לפי הטלפון":t==="light"?"בהיר":"כהה"};
+ apply(get());b.onclick=()=>{const n={auto:"light",light:"dark",dark:"auto"}[get()];try{localStorage.setItem("theme",n)}catch(e){}apply(n);toast(n==="auto"?"תצוגה לפי הטלפון":n==="light"?"מצב בהיר":"מצב כהה")}})();
 </script>
 </body>
 </html>
