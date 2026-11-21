@@ -212,6 +212,8 @@ nav button[aria-current=page]{color:var(--accent)}
 .jacts{display:flex;gap:8px;flex-wrap:wrap}.jacts>*{flex:1;text-align:center;text-decoration:none;min-width:90px}
 .jquick{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}.jquick>*{text-align:center;cursor:pointer;margin:0}
 .jquick:has(> :nth-child(2):last-child){grid-template-columns:1fr 1fr}
+.today{background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 10%,transparent),transparent 70%);border-radius:18px;padding:12px}
+.subh{margin:12px 0 6px;font:700 14px var(--display);color:var(--muted)}
 .jcard{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:12px;display:grid;gap:10px}
 .jcard h3{margin:0;font:700 16px var(--display);display:flex;gap:8px;align-items:center}.jcard h3 small{color:var(--muted);font-weight:500;font-size:13px}
 details.jcard>summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
@@ -590,8 +592,9 @@ function home(){
   const income=yearJobs.reduce((a,j)=>a+num(j.price),0), profit=yearJobs.reduce((a,j)=>a+profitOf(j),0);
   const expY=data.expenses.filter(x=>(x.date||"").startsWith(y)).reduce((a,x)=>a+num(x.amount),0);
   const quotes=openQuotes(), dueQ=dueQuotes();
-  const nowT=tasks.filter(t=>t.date&&t.date<=today()), nextT=tasks.filter(t=>!nowT.includes(t)).slice(0,Math.max(0,5-nowT.length));
+  const nowT=tasks.filter(t=>t.date&&t.date<=today()), nextT=tasks.filter(t=>!nowT.includes(t)).slice(0,4);
   const todayJobs=data.jobs.filter(j=>j.date===today()), todayProj=data.projects.filter(p=>p.date===today());
+  const tmr=(()=>{const d=new Date();d.setDate(d.getDate()+1);return d.toLocaleDateString('sv-SE')})(), tmrJobs=data.jobs.filter(j=>j.date===tmr);
   const bits=[nowT.length?`${nowT.length} ${nowT.length===1?"משימה":"משימות"} להיום`:"",todayJobs.length?`${todayJobs.length===1?"עבודה אחת":todayJobs.length+" עבודות"} בשטח`:"",
     dueQ.length?`${dueQ.length} ${dueQ.length===1?"הצעה":"הצעות"} לחזור אליהן`:"",low.length?`${low.length} פריטים להזמין`:""].filter(Boolean);
   const anim=!homeAnimated;homeAnimated=true;
@@ -603,6 +606,12 @@ function home(){
    <div class="date">${esc(heLongDate())}</div>
    <div class="sumline">${bits.length?"היום: "+bits.join(" · "):"אין משימות פתוחות להיום. יום נקי 👌"}</div>
   </section>
+  <section class="today"><div class="sechead"><h2>📅 היום</h2><button class="btn ghost" type="button" data-new="tasks">+ משימה</button></div>
+   <div class="list" style="margin-top:8px">${todayJobs.map(j=>row("jobs",j)).join("")}${todayProj.map(p=>row("projects",p)).join("")}${nowT.slice(0,8).map(taskRow).join("")}${nowT.length>8?`<button class="row" type="button" data-go="tasks" style="justify-items:center"><span class="t" style="color:var(--accent)">עוד ${nowT.length-8} משימות באיחור</span></button>`:""}
+   ${!todayJobs.length&&!todayProj.length&&!nowT.length?`<div class="empty">אין עבודות או משימות להיום 👌</div>`:""}</div>
+   ${tmrJobs.length?`<h3 class="subh">מחר</h3><div class="list">${tmrJobs.map(j=>row("jobs",j)).join("")}</div>`:""}
+  </section>
+  ${quotes.length?`<button class="tile ${dueQ.length?'warn':''}" data-go="quotes" data-f="${dueQ.length?'due':'active'}"><span>הצעות מחיר · לחזור ללקוחות</span><b>${dueQ.length?dueQ.length+" להיום":"אין להיום"}</b><span>${quotes.length} פתוחות · ${ils(quotes.reduce((a,d)=>a+num(d.amount),0))} · לחץ לרשימה</span></button>`:""}
   <div class="tiles">
    <button class="tile ${owedSum?'good':''}" data-go="debts" data-f="owed"><span>חייבים לי</span><b>${ils(owedSum)}</b><span>${P.inv.length} חשבוניות · ${P.jobs.length} עבודות · ${P.sheet.length} מהגיליון</span></button>
    <button class="tile ${debtSum?'warn':''}" data-go="debts" data-f="open"><span>אני חייב</span><b>${ils(debtSum)}</b><span>${open.length} חובות פתוחים</span></button>
@@ -611,11 +620,8 @@ function home(){
    <button class="tile ${invToCheck().length?'warn':''}" data-go="invoices" data-f="${invToCheck().length?'check':'all'}"><span>חשבוניות ספקים</span><b>${invToCheck().length?invToCheck().length+" לבדיקה":"הכל נבדק"}</b><span>מהמייל · Morning · רו״ח</span></button>
    <button class="tile" data-go="tasks"><span>משימות פתוחות</span><b>${tasks.length}</b><span>${tasks.filter(t=>t.date&&t.date<=today()).length} להיום או באיחור</span></button>
   </div>
-  <section><div class="sechead"><h2>המשימות שלי</h2><button class="btn ghost" type="button" data-new="tasks">+ משימה</button></div>
-   <div class="list" style="margin-top:8px">${nowT.concat(nextT).length?nowT.concat(nextT).map(taskRow).join(""):`<div class="empty">אין משימות פתוחות.</div>`}
-   ${tasks.length>nowT.length+nextT.length?`<button class="row" type="button" data-go="tasks" style="justify-items:center"><span class="t" style="color:var(--accent)">כל המשימות (${tasks.length})</span></button>`:""}</div></section>
-  ${todayJobs.length||todayProj.length?`<section><h2>היום בשטח</h2><div class="list" style="margin-top:8px">${todayJobs.map(j=>row("jobs",j)).join("")}${todayProj.map(p=>row("projects",p)).join("")}</div></section>`:""}
-  ${quotes.length?`<button class="tile ${dueQ.length?'warn':''}" data-go="quotes" data-f="${dueQ.length?'due':'active'}"><span>הצעות מחיר · לחזור ללקוחות</span><b>${dueQ.length?dueQ.length+" להיום":"אין להיום"}</b><span>${quotes.length} פתוחות · ${ils(quotes.reduce((a,d)=>a+num(d.amount),0))} · לחץ לרשימה</span></button>`:""}
+  ${nextT.length?`<section><div class="sechead"><h2>בקרוב</h2></div><div class="list" style="margin-top:8px">${nextT.map(taskRow).join("")}
+   ${tasks.length>nowT.length+nextT.length?`<button class="row" type="button" data-go="tasks" style="justify-items:center"><span class="t" style="color:var(--accent)">כל המשימות (${tasks.length})</span></button>`:""}</div></section>`:""}
   <section class="list" aria-label="סיכום שנה">
    <div class="sum"><span>הכנסות ${y} (לפי עבודות)</span><span>${ils(income)}</span></div>
    <div class="sum plain"><span>רווח בפועל ${y}</span><span>${ils(profit)}</span></div>
