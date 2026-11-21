@@ -195,6 +195,24 @@ nav button[aria-current=page]{color:var(--accent)}
 .thumbs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
 .thumbs button,.thumbs label{aspect-ratio:1;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--chip);padding:0;cursor:pointer;display:grid;place-items:center;color:var(--muted);font:600 13px var(--body);text-align:center;max-width:100%}
 .thumbs img{width:100%;height:100%;object-fit:cover;display:block}
+.thumbs.strip{display:flex;overflow-x:auto;gap:8px;scroll-snap-type:x proximity;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+.thumbs.strip>*{flex:0 0 96px;width:96px;height:96px;aspect-ratio:auto;scroll-snap-align:start}
+.thumbs.strip .add{border-style:dashed;color:var(--accent,#7aa2ff);font-size:14px}
+.jhero{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-top:10px;display:grid;gap:8px}
+.jchips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.jchip{background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:13.5px}
+.jaddr{color:var(--muted);font-size:14px}
+.jacts .btn.waze{margin:0}
+.jacts{display:flex;gap:8px;flex-wrap:wrap}.jacts>*{flex:1;text-align:center;text-decoration:none;min-width:90px}
+.jquick{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}.jquick>*{text-align:center;cursor:pointer;margin:0}
+.jquick:has(> :nth-child(2):last-child){grid-template-columns:1fr 1fr}
+.jcard{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-top:12px;display:grid;gap:10px}
+.jcard h3{margin:0;font:700 16px var(--display);display:flex;gap:8px;align-items:center}.jcard h3 small{color:var(--muted);font-weight:500;font-size:13px}
+details.jcard>summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+details.jcard>summary::-webkit-details-marker{display:none}
+details.jcard>summary::after{content:"▾";color:var(--muted);transition:transform .2s}details.jcard[open]>summary::after{transform:rotate(180deg)}
+.jsig{display:grid;gap:8px}.jsig .s{color:var(--muted);font-size:13px}
+.jdoc{border:1px solid var(--line);border-radius:12px}
 .sigpad{position:fixed;inset:0;z-index:45;background:var(--bg);display:flex;flex-direction:column;
   padding:calc(12px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));gap:10px}
 .sigpad canvas{flex:1;min-height:0;width:100%;background:#fff;border:2px dashed #9aa8c3;border-radius:14px;touch-action:none}
@@ -1185,44 +1203,48 @@ async function jobView(m){
   const doc=data.morning_docs.find(d=>d.id===j.morning_doc_id);
   const opt=d=>`<option value="${esc(d.id)}" ${d.id===j.morning_doc_id?"selected":""}>${esc(d.type_name)} ${esc(d.number)} · ${esc(d.client||"")} · ${ils(d.amount)} · ${heDate(d.doc_date)}</option>`;
   const o=owedOf(j);
-  m.innerHTML=`<div class="bar"><button class="btn ghost" type="button" id="backJob">→ עבודות</button><h2 style="flex:1;min-width:0;overflow-wrap:anywhere">${j.client?`<a href="#" data-client="${esc(canon(j.client))}">${esc(j.client)}</a>`:"עבודה"}</h2><button class="btn ghost" type="button" data-edit="jobs" data-id="${esc(j.id)}">פרטים</button></div>
-   <div class="note">${esc([j.place,j.address,j.date?heDate(j.date):"",j.phone].filter(Boolean).join(" · "))||"—"}${j.price?` · ${ils(j.price)}`:""} ${o>0?`<span class="pill bad">חייב ${ils(o)}</span>`:j.paid==="כן"?`<span class="pill good">שולם</span>`:""}</div>
-   ${wazeBtn(j.address)}
-   <div class="bar" style="margin:8px 0 0"><button class="btn" type="button" id="issueTop" style="flex:1">${j.morning_doc_id?"✉️ שליחת חשבונית במייל":"🧾 חשבונית"}</button><button class="btn ghost" type="button" id="issueTopW" style="flex:1">🧾+🛡️ עם אחריות</button><label class="btn ghost" style="flex:1;text-align:center;cursor:pointer" for="jPhotos">📷 הוספת תמונות</label></div>
-   <h2>תמונות (${photos.length})</h2>
-   <div class="thumbs" id="thumbs">${photos.map((p,i)=>`<button type="button" data-photo="${i}" aria-label="תמונה ${i+1}"><img alt="" data-path="${esc(p.path)}"></button>`).join("")}
-    <label><span>📷<br>הוספת תמונות</span><input type="file" accept="image/*" multiple id="jPhotos" hidden></label></div>
+  const ph=String(j.phone||"").replace(/[^\d+]/g,""),wph=waPhone(j.phone),hasNvr=["nvr_model","nvr_serial","nvr_user","nvr_pass","nvr_code","nvr_ip","nvr_qr"].some(k=>j[k]);
+  m.innerHTML=`<div class="bar"><button class="btn ghost" type="button" id="backJob">→ עבודות</button><h2 style="flex:1;min-width:0;overflow-wrap:anywhere">${j.client?`<a href="#" data-client="${esc(canon(j.client))}">${esc(j.client)}</a>`:"עבודה"}</h2><button class="btn ghost" type="button" data-edit="jobs" data-id="${esc(j.id)}">✏️ פרטים</button></div>
+   <div class="jhero">
+    <div class="jchips">${j.date?`<span class="jchip">📅 ${heDate(j.date)}</span>`:""}${j.kind?`<span class="jchip">${esc(j.kind)}</span>`:""}${j.price?`<span class="jchip">💰 ${ils(j.price)}</span>`:""}${o>0?`<span class="pill bad">חייב ${ils(o)}</span>`:j.paid==="כן"?`<span class="pill good">שולם</span>`:""}</div>
+    ${j.place||j.address?`<div class="jaddr">📍 ${esc([j.place,j.address].filter(Boolean).join(" · "))}</div>`:""}
+    <div class="jacts">${ph?`<a class="btn ghost" href="tel:${esc(ph)}">📞 חיוג</a>`:""}${wph?`<a class="btn ghost" href="https://wa.me/${wph}" target="_blank" rel="noopener">💬 צ׳אט</a>`:""}${j.address?wazeBtn(j.address):""}</div>
+   </div>
+   <div class="jquick"><button class="btn" type="button" id="issueTop">${j.morning_doc_id?"✉️ שליחת חשבונית":"🧾 חשבונית"}</button><button class="btn ghost" type="button" id="issueTopW">🧾+🛡️ עם אחריות</button><label class="btn ghost" for="jPhotos">📷 תמונות</label></div>
 
-   ${j.project_id&&data.projects.find(x=>x.id===j.project_id)?`<button class="btn ghost" type="button" data-open-project="${esc(j.project_id)}">📐 פרויקט: ${esc(data.projects.find(x=>x.id===j.project_id).name)}</button>`:""}
-   ${doc?`<h2>החשבונית של העבודה</h2><div class="list"><div class="drow"><div class="dm"><b>${esc(doc.type_name)} ${esc(doc.number)}</b><span>${heDate(doc.doc_date)}${doc.status===0&&doc.type!==400?' · <span style="color:var(--bad)">פתוחה</span>':""}</span></div><div class="dr"><b>${ils(doc.amount)}</b>${doc.url?`<a class="btn ghost" href="${esc(doc.url)}" target="_blank" rel="noopener">📄 צפייה</a>`:""}</div></div></div>`:""}
-   <h2>סיכום העבודה ללקוח</h2>
-   <div class="f"><textarea id="jSum" style="min-height:90px" placeholder="מה בוצע, איזה ציוד הותקן, הערות ללקוח">${esc(j.summary??j.work??"")}</textarea></div>
+   <section class="jcard"><h3>📷 תמונות <small>${photos.length||""}</small></h3>
+    <div class="thumbs strip" id="thumbs"><label class="add"><span>＋<br>הוספה</span><input type="file" accept="image/*" multiple id="jPhotos" hidden></label>${photos.map((p,i)=>`<button type="button" data-photo="${i}" aria-label="תמונה ${i+1}"><img alt="" data-path="${esc(p.path)}"></button>`).join("")}</div>
+   </section>
+   ${j.project_id&&data.projects.find(x=>x.id===j.project_id)?`<button class="btn ghost" type="button" data-open-project="${esc(j.project_id)}" style="margin-top:10px;width:100%">📐 פרויקט: ${esc(data.projects.find(x=>x.id===j.project_id).name)}</button>`:""}
 
-
-   <h2>חתימת לקוח</h2>
-   ${j.signature_path?`<div class="list" style="padding:12px;display:grid;gap:8px"><img class="sigimg" id="sigImg" alt="חתימת הלקוח"><span class="s" style="color:var(--muted);font-size:13px">נחתם ע״י ${esc(j.signed_name||"")} · ${j.signed_at?new Date(j.signed_at).toLocaleString("he-IL",{day:"numeric",month:"numeric",year:"2-digit",hour:"2-digit",minute:"2-digit"}):""}</span>
+   <section class="jcard"><h3>📝 מה בוצע</h3>
+    <div class="f" style="margin:0"><textarea id="jSum" style="min-height:90px" placeholder="מה בוצע, איזה ציוד הותקן, הערות ללקוח">${esc(j.summary??j.work??"")}</textarea></div>
+    ${j.signature_path?`<div class="jsig"><img class="sigimg" id="sigImg" alt="חתימת הלקוח"><span class="s">✍️ נחתם ע״י ${esc(j.signed_name||"")} · ${j.signed_at?new Date(j.signed_at).toLocaleString("he-IL",{day:"numeric",month:"numeric",year:"2-digit",hour:"2-digit",minute:"2-digit"}):""}</span>
      <button class="btn ghost" type="button" id="signBtn">חתימה מחדש</button></div>`
-   :`<button class="btn" type="button" id="signBtn" style="padding:14px">✍️ החתמת לקוח על אישור ביצוע</button>`}
+    :`<button class="btn" type="button" id="signBtn" style="padding:14px">✍️ החתמת לקוח על אישור ביצוע</button>`}
+   </section>
 
-   <h2>חשבונית ותעודת אחריות</h2>
-   <div class="list" style="padding:12px;display:grid;gap:8px">
+   <section class="jcard"><h3>🧾 חשבונית ואחריות</h3>
+    ${doc?`<div class="drow jdoc"><div class="dm"><b>${esc(doc.type_name)} ${esc(doc.number)}</b><span>${heDate(doc.doc_date)}${doc.status===0&&doc.type!==400?' · <span style="color:var(--bad)">פתוחה</span>':' · <span style="color:var(--good)">סגורה</span>'}</span></div><div class="dr"><b>${ils(doc.amount)}</b>${doc.url?`<a class="btn ghost" href="${esc(doc.url)}" target="_blank" rel="noopener">📄 צפייה</a>`:""}</div></div>`:""}
     <div class="pair"><div class="f"><label for="jWno">מס׳ תעודת אחריות</label><input id="jWno" type="text" inputmode="numeric" dir="ltr" placeholder="מהתעודה המודפסת" value="${esc(j.warranty_no||"")}"></div>
      <div class="f"><label for="jMail">מייל הלקוח</label><input id="jMail" type="email" dir="ltr" autocapitalize="off" value="${esc(j.client_email||clientMail(j)||"")}"></div></div>
     ${j.mail_sent_at?`<div class="note" style="margin:0">✉️ נשלח ל-${esc(j.mail_to||"")} · ${new Date(j.mail_sent_at).toLocaleString("he-IL",{day:"numeric",month:"numeric",year:"2-digit",hour:"2-digit",minute:"2-digit"})}</div>`:""}
-    <div class="bar" style="margin:0">${j.warranty_path?`<button class="btn ghost" type="button" data-jfile="${esc(j.warranty_path)}" style="flex:1">🛡️ התעודה</button>`:""}${j.invoice_path?`<button class="btn ghost" type="button" data-jfile="${esc(j.invoice_path)}" style="flex:1">📄 החשבונית</button>`:""}</div>
-    ${j.morning_doc_id?"":`<label class="vchk" style="margin:0"><input type="checkbox" id="jLater" ${j.bill_later?"checked":""}> ממתין לחשבונית מרוכזת (אוציא חשבונית אחת על כמה עבודות מכרטיס הלקוח)</label>`}
-    <div class="bar" style="margin:0"><button class="btn" type="button" id="issueBtn" style="flex:1;padding:14px">${j.morning_doc_id?"✉️ שליחת החשבונית במייל":"🧾 חשבונית בלבד"}</button><button class="btn" type="button" id="issueBtnW" style="flex:1;padding:14px">🧾+🛡️ חשבונית + תעודת אחריות</button></div>
-   </div>
-   <div class="f"><label for="jDoc">קישור לחשבונית שכבר קיימת ב-Morning</label><select id="jDoc"><option value="">— בלי מסמך —</option>
+    ${j.warranty_path||j.invoice_path?`<div class="bar" style="margin:0">${j.warranty_path?`<button class="btn ghost" type="button" data-jfile="${esc(j.warranty_path)}" style="flex:1">🛡️ התעודה</button>`:""}${j.invoice_path?`<button class="btn ghost" type="button" data-jfile="${esc(j.invoice_path)}" style="flex:1">📄 החשבונית</button>`:""}</div>`:""}
+    ${j.morning_doc_id?"":`<label class="vchk" style="margin:0"><input type="checkbox" id="jLater" ${j.bill_later?"checked":""}> ממתין לחשבונית מרוכזת (חשבונית אחת על כמה עבודות, מכרטיס הלקוח)</label>`}
+    <div class="jquick" style="margin:0"><button class="btn" type="button" id="issueBtn" style="padding:14px">${j.morning_doc_id?"✉️ שליחת החשבונית":"🧾 חשבונית בלבד"}</button><button class="btn ghost" type="button" id="issueBtnW" style="padding:14px">🧾+🛡️ עם תעודת אחריות</button></div>
+    <div class="f" style="margin:0"><label for="jDoc">קישור לחשבונית שכבר קיימת ב-Morning</label><select id="jDoc"><option value="">— בלי מסמך —</option>
      ${mine.length?`<optgroup label="של הלקוח הזה">${mine.map(opt).join("")}</optgroup>`:""}</select></div>
-   <h2>שליחה ב-WhatsApp</h2>
-   <div class="f"><label for="jPay">קישור לתשלום (אם יש – ביט, פייבוקס, דף תשלום)</label><input id="jPay" type="url" dir="ltr" value="${esc(j.pay_link||"")}" placeholder="https://"></div>
+   </section>
 
-   <div class="bar"><a class="btn wa" id="waBtn" style="flex:1;text-align:center;text-decoration:none" target="_blank" rel="noopener">שליחה ב-WhatsApp</a></div>
-   <div class="bar"><button class="btn ghost" type="button" id="shareReport" style="flex:1">שיתוף אישור ביצוע חתום (תמונה)</button></div>
-   <h4 class="sec">מערכת הקלטה (NVR / DVR)</h4>
+   <section class="jcard"><h3>💬 שליחה ללקוח</h3>
+    <div class="f" style="margin:0"><label for="jPay">קישור לתשלום (ביט, פייבוקס, דף תשלום)</label><input id="jPay" type="url" dir="ltr" value="${esc(j.pay_link||"")}" placeholder="https://"></div>
+    <a class="btn wa" id="waBtn" style="text-align:center;text-decoration:none;padding:14px" target="_blank" rel="noopener">שליחה ב-WhatsApp</a>
+    <button class="btn ghost" type="button" id="shareReport">שיתוף אישור ביצוע חתום (תמונה)</button>
+   </section>
+
+   <details class="jcard" ${hasNvr?"open":""}><summary><h3>📼 מערכת הקלטה (NVR / DVR)</h3></summary>
    <div class="pair">${[["nvr_model","דגם"],["nvr_serial","מספר סידורי (S/N)"],["nvr_user","שם משתמש"],["nvr_pass","סיסמה"],["nvr_code","קוד מצלמות"],["nvr_ip","IP קבוע"],["nvr_qr","QR / P2P"]].map(([k,l])=>`<div class="f"><label for="j_${k}">${l}</label><input id="j_${k}" data-nvr="${k}" type="text" dir="ltr" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" ${k==="nvr_pass"||k==="nvr_code"?'class="secret"':""} value="${esc(j[k]||"")}"></div>`).join("")}</div>
-   <div class="note" style="font-size:12.5px">נשמר אוטומטית. הסיסמה וקוד המצלמות מוסתרים – לחיצה מציגה אותם. הפרטים האלה לא נשלחים ללקוח.</div>`;
+   <div class="note" style="font-size:12.5px;margin:0">נשמר אוטומטית. הסיסמה וקוד המצלמות מוסתרים – לחיצה מציגה אותם. הפרטים האלה לא נשלחים ללקוח.</div></details>`;
   // load images
   const urls=await signed([...photos.map(p=>p.path),j.signature_path].filter(Boolean));
   document.querySelectorAll("#thumbs img[data-path]").forEach(im=>{im.src=fileUrl[im.dataset.path]||""});
