@@ -54,6 +54,26 @@ Deno.serve(async (req) => {
       return json({ok: true, dry: !!body.dry, report});
     }
 
+    // full copy of the app's data for the backup sheet "אהרן מערכות – עובר ושב". Read-only; recorder passwords and file paths stay out.
+    if (body.action === "export") {
+      const T: Record<string, string> = {
+        jobs: "id,date,time,client,phone,place,address,kind,work,price,cost,paid,paid_amount,receipt,bill_later,warranty_no,notes,updated_at",
+        tasks: "id,date,time,title,client,done,notes,updated_at",
+        projects: "id,name,client,address,status,date,time,notes,updated_at",
+        debts: "id,dir,name,cat,amount,orig,due,monthly,paid,source,notes,sheet_key,updated_at",
+        expenses: "id,date,vendor,cat,amount,vat,for_job,receipt,kind,qty,unit_price,notes,source,sheet_key,updated_at",
+      };
+      const res: Record<string, unknown> = {};
+      for (const [t, cols] of Object.entries(T)) {
+        const { data, error } = await sb.from(t).select(cols).order("id").range(0, 4999);
+        if (error) return json({ok: false, message: t + ": " + error.message}, 500);
+        res[t] = data || [];
+      }
+      const { data: bal } = await sb.from("app_settings").select("value").eq("key", "balances").maybeSingle();
+      try { res.balances = bal ? JSON.parse(bal.value) : null; } catch (_) { res.balances = null; }
+      return json({ok: true, at: new Date().toISOString(), ...res});
+    }
+
     // money sheets (sent by the Apps Script): debts + "owed to me" from the עו"ש file, fixed monthly expenses,
     // and project cost items. The sheet is the source: rows are matched by sheet_key, amounts updated,
     // rows gone from the sheet removed. Status and notes typed in the app are kept.
@@ -79,6 +99,12 @@ Deno.serve(async (req) => {
       const TAXCAT: Record<string, string> = {"מס הכנסה": "מס הכנסה", "ביטוח לאומי": "ביטוח לאומי", "ביטוח לואמי": "ביטוח לאומי"};
       const catOf = (n: string) => /מע.?מ/.test(n) ? 'מע"מ' : TAXCAT[n] || Object.entries(TAXCAT).find(([k]) => n.includes(k))?.[1] || null;
       try {
+        // balances block of "נכסים" (accounts and totals) – kept as one JSON value for the dashboard
+        if (Array.isArray(body.balances)) {
+          const { error: e } = await sb.from("app_settings").upsert({key: "balances", value: JSON.stringify({at: now, rows: body.balances}), updated_at: now});
+          if (e) throw new Error("balances: " + e.message);
+          out.balances = {count: body.balances.length};
+        }
         if (Array.isArray(body.debts)) out.debts = await mirror("debts", "debt:", body.debts.map((d: any) => ({sheet_key: d.key, name: d.name, amount: d.amount, dir: "אני חייב",
           cat: catOf(d.name) || (/אשראי|פפר|הלוואה/.test(d.name) ? "אשראי/הלוואה" : "אחר"), source: 'גיליון עו"ש · חובות'})), ["name", "amount", "dir", "cat", "source"]);
         if (Array.isArray(body.owed)) out.owed = await mirror("debts", "owed:", body.owed.map((d: any) => ({sheet_key: d.key, name: d.name, amount: d.amount, orig: d.orig, dir: "חייבים לי",
