@@ -54,7 +54,7 @@ async function findClient(tok: string, name: string) {
 }
 type Line = {description: string; quantity: number; price: number};
 function docBody(b: any, client: any) {
-  const type = [305, 320].includes(Number(b.type)) ? Number(b.type) : 305;
+  const type = [305, 320, 10].includes(Number(b.type)) ? Number(b.type) : 305;
   const incl = !!b.vat_included;
   const lines: Line[] = (b.lines || []).map((l: any) => ({description: String(l.description || "").trim(), quantity: Number(l.quantity) || 1, price: Number(l.price) || 0}))
     .filter((l: Line) => l.description && l.price);
@@ -185,6 +185,25 @@ Deno.serve(async (req) => {
       return json({ok: true});
     }
     if (caller !== "app") return json({ok: false, message: "אין הרשאה"}, 401);
+
+    // quote (הצעת מחיר, type 10) made in the app: preview only, or create it in Morning. Nothing is mailed.
+    if (action === "quote_preview" || action === "quote") {
+      const mtok = await morningToken();
+      const {body, total} = docBody({...b, type: 10}, await findClient(mtok, String(b.client || "")));
+      if (action === "quote_preview") {
+        const p = await mcall(mtok, "POST", "/documents/preview", body);
+        const pdf = p.file || p.pdf || p.data || null;
+        if (!pdf) throw new Error("Morning לא החזיר תצוגה מקדימה");
+        return json({ok: true, pdf, total});
+      }
+      const created = await mcall(mtok, "POST", "/documents", body);
+      const now = new Date().toISOString(), url = created.url?.he || created.url?.origin || null;
+      await sb.from("morning_docs").upsert({id: created.id, number: String(created.number ?? ""), type: 10, type_name: TYPES[10], status: 0, status_name: "פתוח",
+        doc_date: body.date, client: body.client.name, description: body.description || null, amount: total, currency: "ILS",
+        url, client_email: b.email || null, client_phone: b.phone || null, synced_at: now});
+      if (b.project_id) await sb.from("projects").update({quote_doc_id: created.id, updated_at: now}).eq("id", b.project_id);
+      return json({ok: true, id: created.id, number: created.number, url, total});
+    }
 
     if (action === "next") {
       const {data} = await sb.from("jobs").select("warranty_no").not("warranty_no", "is", null);

@@ -672,11 +672,52 @@ function quotesView(){
   const fl={active:d=>activeQ(fu(d)),due:isDue,closed:d=>!activeQ(fu(d)),all:()=>true};
   const qs=all.filter(fl[cur]).sort((a,b)=>String(fu(a).next_date||"9").localeCompare(String(fu(b).next_date||"9"))||String(b.doc_date).localeCompare(String(a.doc_date)));
   const nDue=all.filter(isDue).length;
-  return `<div class="bar"><h2 style="flex:1">הצעות מחיר</h2><button class="btn ghost" type="button" data-go="home">חזרה</button></div>
+  return `<div class="bar"><h2 style="flex:1">הצעות מחיר</h2><button class="btn" type="button" data-newquote>+ הצעה חדשה</button><button class="btn ghost" type="button" data-go="home">חזרה</button></div>
   <div class="note">הצעות פתוחות ב־Morning. לכל הצעה יש תאריך לחזור ללקוח (בהתחלה: 3 ימים אחרי ההצעה). שליחת וואטסאפ מהכרטיס דוחה אוטומטית ב־3 ימים.</div>
   <div class="filters" role="group" aria-label="סינון">${[["active","לטיפול"],["due",`להיום (${nDue})`],["closed","נסגרו"],["all","הכל"]].map(([v,l])=>`<button type="button" class="chipbtn" data-filt="${v}" aria-pressed="${v===cur}">${l}</button>`).join("")}</div>
   <div class="list">${qs.length?qs.map(quoteRow).join(""):`<div class="empty">${cur==="due"?"אין הצעות לחזור אליהן היום 👍":"אין הצעות כאן."}</div>`}<div class="sum"><span>${qs.length} הצעות</span><span>${ils(qs.reduce((a,d)=>a+num(d.amount),0))}</span></div></div>`;
 }
+/* new quote (הצעת מחיר) in Morning from the app – preview first, then create. Nothing is sent to the client. */
+function newQuoteSheet(pre={}){
+  const el=$("#sheet");
+  const line=(l={})=>`<div class="iline" style="display:grid;grid-template-columns:1fr 64px 96px 34px;gap:6px;align-items:end">
+     <div class="f"><label>תיאור</label><textarea data-l="description" rows="2">${esc(l.description||"")}</textarea></div>
+     <div class="f"><label>כמות</label><input data-l="quantity" type="number" inputmode="decimal" step="any" value="${esc(l.quantity??1)}"></div>
+     <div class="f"><label>מחיר ליח׳ ₪</label><input data-l="price" type="number" inputmode="decimal" step="any" value="${esc(l.price??"")}"></div>
+     <button class="btn ghost" type="button" data-rmline aria-label="מחיקת שורה" style="padding:8px 0">✕</button></div>`;
+  el.innerHTML=`<form id="nq" novalidate><h3>📝 הצעת מחיר חדשה ב-Morning</h3>
+   <div class="note">ההצעה נוצרת ב-Morning ונשמרת ברשימת ההצעות. היא לא נשלחת ללקוח – שולחים אחר כך מהכרטיס שלה.</div>
+   <div class="f"><label for="nqC">לקוח</label><input id="nqC" type="text" value="${esc(pre.client||"")}"></div>
+   <div class="f"><label for="nqP">טלפון</label><input id="nqP" type="tel" dir="ltr" value="${esc(pre.phone||"")}"></div>
+   <div class="f"><label for="nqE">מייל (לא חובה)</label><input id="nqE" type="email" dir="ltr" value="${esc(pre.email||"")}"></div>
+   <div class="f"><label for="nqA">כתובת (לא חובה)</label><input id="nqA" type="text" value="${esc(pre.address||"")}"></div>
+   <div class="f"><label for="nqD">כותרת</label><input id="nqD" type="text" value="${esc(pre.description||"")}"></div>
+   <div id="nqL">${(pre.lines&&pre.lines.length?pre.lines:[{}]).map(line).join("")}</div>
+   <button class="btn ghost" type="button" id="nqAdd">+ שורה</button>
+   <div class="f"><label><input id="nqI" type="checkbox" ${pre.vat_included?"checked":""}> המחירים כוללים מע״מ</label></div>
+   <div class="f"><label for="nqR">הערות בהצעה</label><textarea id="nqR" rows="4">${esc(pre.remarks||"")}</textarea></div>
+   <div class="sum" id="nqT"></div>
+   <div class="actions"><button class="btn ghost" type="button" id="nqPrev">👁️ תצוגה מקדימה</button><button class="btn" type="submit">יצירה ב-Morning</button><button class="btn ghost" type="button" data-close>סגירה</button></div></form>`;
+  el.hidden=false;
+  const form=$("#nq");
+  const lines=()=>[...form.querySelectorAll(".iline")].map(r=>({description:r.querySelector('[data-l="description"]').value.trim(),quantity:num(r.querySelector('[data-l="quantity"]').value)||1,price:num(r.querySelector('[data-l="price"]').value)})).filter(l=>l.description&&l.price);
+  const body=()=>({client:$("#nqC").value.trim(),phone:$("#nqP").value.trim(),email:$("#nqE").value.trim(),address:$("#nqA").value.trim(),description:$("#nqD").value.trim(),remarks:$("#nqR").value.trim(),vat_included:$("#nqI").checked,lines:lines(),project_id:pre.project_id||undefined});
+  const tot=()=>{const b=body(),net=b.lines.reduce((a,l)=>a+l.quantity*l.price,0),t=b.vat_included?net:net*1.18;$("#nqT").innerHTML=`<span>סה״כ ${b.vat_included?"כולל מע״מ":"לפני מע״מ "+ils(net)+" · כולל מע״מ"}</span><span>${ils(t)}</span>`};
+  form.addEventListener("input",tot);tot();
+  $("#nqAdd").onclick=()=>{$("#nqL").insertAdjacentHTML("beforeend",line());};
+  form.addEventListener("click",e=>{const r=e.target.closest("[data-rmline]");if(r&&form.querySelectorAll(".iline").length>1){r.closest(".iline").remove();tot()}});
+  const call=async b=>{const res=await sb.functions.invoke("issue",{body:b});let r=res.data;if(res.error&&res.error.context&&res.error.context.json){try{r=await res.error.context.json()}catch(x){}}return r||{ok:false,message:"אין תשובה מהשרת"}};
+  const check=b=>{if(!b.client){toast("חסר שם לקוח");return false}if(!b.lines.length){toast("צריך לפחות שורה אחת עם תיאור ומחיר");return false}return true};
+  $("#nqPrev").onclick=async()=>{const b=body();if(!check(b))return;const w=window.open("","_blank");toast("מכין תצוגה מקדימה…");
+    const r=await call({...b,action:"quote_preview"});if(!r.ok||!r.pdf){if(w)w.close();toast(r.message||"התצוגה לא נפתחה");return}openPdf64(r.pdf,w)};
+  form.onsubmit=async e=>{e.preventDefault();const b=body();if(!check(b))return;
+    if(!confirm(`ליצור ב-Morning הצעת מחיר ל${b.client}?`))return;
+    const btn=form.querySelector('[type=submit]');btn.disabled=true;btn.textContent="יוצר…";
+    const r=await call({...b,action:"quote"});
+    if(!r.ok){btn.disabled=false;btn.textContent="יצירה ב-Morning";toast(r.message||"לא נוצרה");return}
+    toast(`נוצרה הצעת מחיר ${r.number||""}`);el.hidden=true;await loadAll();if(r.id)openQuote(r.id)};
+}
+document.addEventListener("click",e=>{if(e.target.closest("[data-newquote]")){e.preventDefault();newQuoteSheet()}});
 function openQuote(id){
   const d=data.morning_docs.find(x=>x.id===id);if(!d)return;
   const f=fu(d),el=$("#sheet");
