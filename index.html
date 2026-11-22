@@ -2026,7 +2026,7 @@ function invView(){
    <div class="list">${items.length?items.map(invRow).join(""):`<div class="empty">${f==="check"?"אין חשבוניות לבדיקה 👌":"אין חשבוניות בחודש הזה."}</div>`}</div>
    <div class="bar" style="margin-top:10px"><button class="btn" type="button" id="invMorning" style="flex:1" ${toMorning.length?"":"disabled"}>שליחה ל-Morning (${toMorning.length})</button>
     <button class="btn" type="button" id="invSend" style="flex:1" ${ok.length?"":"disabled"}>שליחה לרו״ח במייל (${ok.length})</button></div>
-   <button class="btn" type="button" id="invWa" style="width:100%;margin-top:6px" ${exp.length?"":"disabled"}>📲 שליחה לרו״ח בוואטסאפ (${ok.length||exp.length} קבצים)</button>
+   <button class="btn" type="button" id="invWa" style="width:100%;margin-top:6px" ${exp.length?"":"disabled"}>📲 שליחה לרו״ח בוואטסאפ – כל הקבצים (${exp.length})</button>
    ${sendNote?`<div class="note">${esc(sendNote)}</div>`:""}
    <div class="note">רו״ח: ${accountant()?`<b dir="ltr">${esc(accountant())}</b>`:"עוד לא הוגדר"} · <a href="#" id="invAcc">${accountant()?"שינוי":"הגדרה"}</a><br>חשבוניות שמגיעות למייל נכנסות לכאן לבד כל שעה. לרו״ח נשלחות רק חשבוניות מאושרות של החודש שמוצג.</div>`;
 }
@@ -2098,14 +2098,14 @@ async function invSetAccountant(){
   if(error){toast("לא נשמר");return null}toast("נשמר");await loadAll();return m;
 }
 /* WhatsApp to the accountant: the month's invoice files through the phone's share sheet (pick the accountant's chat).
-   Approved invoices only if any are approved, otherwise every expense of the month that is not marked "לא רלוונטי". */
+   Every expense document of the month that is not marked "לא רלוונטי" – the accountant reviews them herself. */
 async function invShareWA(btn){
   const exp=invAll().filter(x=>x.month===invMonth&&x.kind==="expense"&&x.status!=="לא רלוונטי"&&x.file_path);
-  const ok=exp.filter(x=>x.status==="מאושר"),list=ok.length?ok:exp;
+  const list=exp;
   if(!list.length)return;
   const total=list.reduce((s,x)=>s+num(x.amount),0);
   const text=`חשבוניות הוצאה – ${heMonth(invMonth)} · אהרן מערכות\n${list.length} מסמכים · סה״כ ${ils(total)}\n`+list.map(x=>`• ${x.supplier||""} ${x.doc_number||""} – ${ils(x.amount)}`).join("\n");
-  if(!confirm(`לשלוח בוואטסאפ ${list.length} קבצים של ${heMonth(invMonth)} (${ils(total)})?${ok.length?"":"\n\nשים לב: אף חשבונית עוד לא אושרה – יישלחו כל ההוצאות של החודש."}\n\nבחלון שייפתח בוחרים את הצ'אט של רואת החשבון.`))return;
+  if(!confirm(`לשלוח בוואטסאפ ${list.length} קבצים של ${heMonth(invMonth)} (${ils(total)})?\n\nנשלחים הקבצים עצמם (PDF/תמונה), עם רשימה וסכומים.\nבחלון שייפתח בוחרים את הצ'אט של רואת החשבון.`))return;
   btn.disabled=true;const lbl=btn.textContent;btn.textContent="מכין קבצים…";
   try{
     const files=[];
