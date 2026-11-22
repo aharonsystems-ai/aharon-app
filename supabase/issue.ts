@@ -27,6 +27,51 @@ const heDate = (iso: string) => { const m = String(iso || "").match(/^(\d{4})-(\
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"} as any)[c]);
 const fname = (s: string) => String(s).replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
 
+
+/* ---------- AI (Gemini) – reads supplier / competitor quotes for a new quote draft ---------- */
+let gModel = "";
+async function geminiModels(key: string) {
+  const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=" + encodeURIComponent(key));
+  const d = await r.json().catch(() => ({}));
+  const ver = (n: string) => Number((n.match(/gemini-(\d+(?:\.\d+)?)/) || [])[1] || 0);
+  return (d.models || []).map((m: any) => ({n: String(m.name).replace(/^models\//, ""), g: m.supportedGenerationMethods || []}))
+    .filter((m: any) => m.g.includes("generateContent") && /^gemini-([\d.]+-)?(flash|pro)(-lite)?(-latest|-\d+)?$/.test(m.n))
+    .sort((a: any, b: any) => (a.n.includes("lite") ? 1 : 0) - (b.n.includes("lite") ? 1 : 0) || ver(b.n) - ver(a.n) || a.n.length - b.n.length)
+    .map((m: any) => m.n);
+}
+async function gemini(parts: unknown[]): Promise<any> {
+  const env = Deno.env.toObject();
+  const key = env.GEMINI_API_KEY || Object.entries(env).find(([k, v]) => /gemini/i.test(k) && v)?.[1] || "";
+  if (!key) throw new Error("חסר מפתח Gemini");
+  const call = (model: string) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({contents: [{parts}], generationConfig: {responseMimeType: "application/json", temperature: 0}})});
+  const list = gModel ? [gModel] : [env.GEMINI_MODEL || "", ...(await geminiModels(key))].filter(Boolean).slice(0, 8);
+  let last = "";
+  for (const m of list) {
+    const r = await call(m); const d = await r.json().catch(() => ({}));
+    if (r.ok) {
+      gModel = m; const t = (d.candidates?.[0]?.content?.parts || []).map((p: any) => p.text || "").join("");
+      const a = t.indexOf("{"), z = t.lastIndexOf("}"); if (a < 0 || z < a) throw new Error("AI: no JSON");
+      return JSON.parse(t.slice(a, z + 1));
+    }
+    last = "Gemini " + r.status + ": " + (d.error?.message || "").slice(0, 140);
+    if (gModel) { gModel = ""; return gemini(parts); }
+    if (![402, 403, 404, 429].includes(r.status)) break;
+  }
+  throw new Error(last);
+}
+const QUOTE_PROMPT = `אתה מכין טיוטה של הצעת מחיר ללקוח של "אהרן מערכות" (מצלמות אבטחה, אזעקות, תקשורת).
+צירפתי מסמכים: הצעות מחיר מספקים אל אהרן מערכות (זו העלות של אהרן), ואולי הצעת מחיר של מתחרה ללקוח.
+החזר JSON בלבד:
+{"client":"שם הלקוח (מ'לכבוד' בהצעת המתחרה) או ריק","title":"כותרת קצרה להצעה",
+ "lines":[{"group":"שם האתר/המערכת אם יש כמה (למשל חנות אופניים), אחרת ריק","description":"תיאור קצר וברור בעברית ללקוח, בלי מק\\"ט","quantity":מספר,"cost":עלות ליחידה לפני מע\\"מ לפי הספק או null,"competitor_price":מחיר ליחידה לפני מע\\"מ אצל המתחרה לאותו פריט או null}],
+ "competitor":{"name":"שם המתחרה או ריק","total":סה\\"כ לפני מע\\"מ או null,"monthly":[{"description":"","price":מספר}]},
+ "notes":"מה חסר או לא תואם (למשל פריט שאין לו מחיר ספק), בעברית, עד 3 שורות"}
+כללים: כל פריט בהצעת הספק = שורה אחת. אם יש כמה הצעות ספק לאתרים שונים – group לפי האתר (תתאים להצעת המתחרה).
+פריט שיש אצל המתחרה ואין אצל הספק – שורה עם cost null. שורת "התקנה/חיווט" של המתחרה – אל תוסיף כשורה.
+מחיר ספק בדולר – השתמש בשקלים שבמסמך אם יש. תעלה/צינור במטרים – quantity במטרים ו-cost למטר. אל תמציא מחירים.`;
+
 /* ---------- Morning ---------- */
 async function morningToken(): Promise<string> {
   const id = Deno.env.get("MORNING_ID"), secret = Deno.env.get("MORNING_SECRET");
@@ -63,7 +108,7 @@ function docBody(b: any, client: any) {
   const total = round2(incl ? net : net * (1 + VAT));
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(b.date || "")) ? String(b.date) : new Date().toISOString().slice(0, 10);
   const body: any = {type, date, lang: "he", currency: "ILS", vatType: 0, rounding: false, signed: true, attachment: false,
-    description: String(b.description || "").slice(0, 200) || undefined, remarks: b.remarks ? String(b.remarks).slice(0, 500) : undefined,
+    description: String(b.description || "").slice(0, 200) || undefined, remarks: b.remarks ? String(b.remarks).slice(0, type === 10 ? 1500 : 500) : undefined,
     client: client?.id ? {id: client.id, name: client.name, emails: b.email ? [b.email] : (client.emails || []), add: false}
       : {name: b.client, emails: b.email ? [b.email] : [], phone: b.phone || undefined, mobile: b.phone || undefined, address: b.address || undefined, add: true},
     income: lines.map(l => ({description: l.description, quantity: l.quantity, price: l.price, currency: "ILS", vatType: incl ? 1 : 0}))};
@@ -185,6 +230,34 @@ Deno.serve(async (req) => {
       return json({ok: true});
     }
     if (caller !== "app") return json({ok: false, message: "אין הרשאה"}, 401);
+
+    // quote draft from files: supplier quotes (cost) + optional competitor quote → suggested lines. Nothing is created.
+    if (action === "quote_draft") {
+      const files = Array.isArray(b.files) ? b.files.slice(0, 6) : [];
+      if (!files.length) return json({ok: false, message: "לא צורפו קבצים"}, 400);
+      const parts: unknown[] = [{text: QUOTE_PROMPT}];
+      for (const f of files) {
+        parts.push({text: `קובץ: ${String(f.name || "")}${f.role ? " (" + f.role + ")" : ""}`});
+        parts.push({inline_data: {mime_type: String(f.mime || "application/pdf"), data: String(f.b64 || "")}});
+      }
+      const d = await gemini(parts);
+      return json({ok: true, draft: d});
+    }
+    // an existing quote's content, to fix it into a new one
+    if (action === "quote_get") {
+      const mtok = await morningToken();
+      const d = await mcall(mtok, "GET", "/documents/" + encodeURIComponent(String(b.id || "")));
+      const items = (d.income || []).map((x: any) => ({description: x.description, quantity: x.quantity, price: x.price}));
+      return json({ok: true, client: d.client?.name || "", phone: d.client?.phone || "", email: (d.client?.emails || [])[0] || "",
+        address: d.client?.address || "", description: d.description || "", remarks: d.remarks || "", vat_included: (d.income || [])[0]?.vatType === 1, lines: items});
+    }
+    // close an old quote in Morning (after a fixed one was made)
+    if (action === "quote_close") {
+      const mtok = await morningToken(), id = String(b.id || "");
+      await mcall(mtok, "POST", "/documents/" + encodeURIComponent(id) + "/close");
+      await sb.from("morning_docs").update({status: 1, status_name: "סגור", synced_at: new Date().toISOString()}).eq("id", id);
+      return json({ok: true});
+    }
 
     // quote (הצעת מחיר, type 10) made in the app: preview only, or create it in Morning. Nothing is mailed.
     if (action === "quote_preview" || action === "quote") {

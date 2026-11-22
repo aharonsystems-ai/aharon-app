@@ -677,16 +677,25 @@ function quotesView(){
   <div class="filters" role="group" aria-label="סינון">${[["active","לטיפול"],["due",`להיום (${nDue})`],["closed","נסגרו"],["all","הכל"]].map(([v,l])=>`<button type="button" class="chipbtn" data-filt="${v}" aria-pressed="${v===cur}">${l}</button>`).join("")}</div>
   <div class="list">${qs.length?qs.map(quoteRow).join(""):`<div class="empty">${cur==="due"?"אין הצעות לחזור אליהן היום 👍":"אין הצעות כאן."}</div>`}<div class="sum"><span>${qs.length} הצעות</span><span>${ils(qs.reduce((a,d)=>a+num(d.amount),0))}</span></div></div>`;
 }
-/* new quote (הצעת מחיר) in Morning from the app – preview first, then create. Nothing is sent to the client. */
+/* new quote (הצעת מחיר) in Morning from the app – optional draft from supplier/competitor files, cost and margin,
+   preview first, then create. Nothing is sent to the client. pre.replaces = an older quote this one fixes. */
+const QREM="• המחיר כולל התקנה, חיווט, תכנות וחיבור לאפליקציה.\n• אחריות לשנה על הציוד וההתקנה.\n• ההצעה בתוקף 14 יום.";
 function newQuoteSheet(pre={}){
   const el=$("#sheet");
-  const line=(l={})=>`<div class="iline" style="display:grid;grid-template-columns:1fr 64px 96px 34px;gap:6px;align-items:end">
+  const line=(l={})=>`<div class="iline" style="display:grid;grid-template-columns:1fr 50px 70px 80px 30px;gap:5px;align-items:end">
      <div class="f"><label>תיאור</label><textarea data-l="description" rows="2">${esc(l.description||"")}</textarea></div>
      <div class="f"><label>כמות</label><input data-l="quantity" type="number" inputmode="decimal" step="any" value="${esc(l.quantity??1)}"></div>
+     <div class="f"><label>עלות ליח׳</label><input data-l="cost" type="number" inputmode="decimal" step="any" value="${esc(l.cost??"")}" placeholder="—"></div>
      <div class="f"><label>מחיר ליח׳ ₪</label><input data-l="price" type="number" inputmode="decimal" step="any" value="${esc(l.price??"")}"></div>
      <button class="btn ghost" type="button" data-rmline aria-label="מחיקת שורה" style="padding:8px 0">✕</button></div>`;
-  el.innerHTML=`<form id="nq" novalidate><h3>📝 הצעת מחיר חדשה ב-Morning</h3>
-   <div class="note">ההצעה נוצרת ב-Morning ונשמרת ברשימת ההצעות. היא לא נשלחת ללקוח – שולחים אחר כך מהכרטיס שלה.</div>
+  const old=pre.replaces&&data.morning_docs.find(d=>d.id===pre.replaces);
+  el.innerHTML=`<form id="nq" novalidate><h3>📝 ${old?`תיקון הצעה ${esc(old.number)}`:"הצעת מחיר חדשה"} ב-Morning</h3>
+   <div class="note">אפשר לצרף הצעת מחיר של ספק (העלות שלך) ושל מתחרה – והאפליקציה תכין טיוטה עם מחירים. אחר כך מתקנים, רואים תצוגה מקדימה ויוצרים. ההצעה לא נשלחת ללקוח לבד.</div>
+   <div class="f"><label for="nqF">📎 קבצים: הצעת ספק / הצעת מתחרה (PDF או תמונה)</label><input id="nqF" type="file" accept="application/pdf,image/*" multiple></div>
+   <div class="f"><label for="nqMode">תמחור</label><select id="nqMode"><option value="comp">כמו המתחרה (לכל פריט)</option><option value="markup">עלות × מקדם</option></select></div>
+   <div class="f" id="nqMk" hidden><label for="nqMul">מקדם על העלות</label><input id="nqMul" type="number" step="0.1" value="2.2"></div>
+   <button class="btn ghost" type="button" id="nqRead">🤖 קריאת הקבצים והכנת טיוטה</button>
+   <div class="note" id="nqNote" hidden></div>
    <div class="f"><label for="nqC">לקוח</label><input id="nqC" type="text" value="${esc(pre.client||"")}"></div>
    <div class="f"><label for="nqP">טלפון</label><input id="nqP" type="tel" dir="ltr" value="${esc(pre.phone||"")}"></div>
    <div class="f"><label for="nqE">מייל (לא חובה)</label><input id="nqE" type="email" dir="ltr" value="${esc(pre.email||"")}"></div>
@@ -695,18 +704,53 @@ function newQuoteSheet(pre={}){
    <div id="nqL">${(pre.lines&&pre.lines.length?pre.lines:[{}]).map(line).join("")}</div>
    <button class="btn ghost" type="button" id="nqAdd">+ שורה</button>
    <div class="f"><label><input id="nqI" type="checkbox" ${pre.vat_included?"checked":""}> המחירים כוללים מע״מ</label></div>
-   <div class="f"><label for="nqR">הערות בהצעה</label><textarea id="nqR" rows="4">${esc(pre.remarks||"")}</textarea></div>
-   <div class="sum" id="nqT"></div>
+   <div class="bar" style="gap:6px;align-items:end"><div class="f" style="flex:1"><label for="nqTg">לעגל את הסה״כ ל־ (לפני מע״מ)</label><input id="nqTg" type="number" inputmode="decimal" placeholder="למשל 7000"></div><button class="btn ghost" type="button" id="nqTgB">התאמה</button></div>
+   <div class="f"><label for="nqW">עלות עבודה / עובד ₪ (רק לחישוב הרווח)</label><input id="nqW" type="number" inputmode="decimal" value="${esc(pre.work||"")}"></div>
+   <div class="list" id="nqT"></div>
+   <div class="f"><label for="nqR">הערות בהצעה</label><textarea id="nqR" rows="6">${esc(pre.remarks??QREM)}</textarea></div>
    <div class="actions"><button class="btn ghost" type="button" id="nqPrev">👁️ תצוגה מקדימה</button><button class="btn" type="submit">יצירה ב-Morning</button><button class="btn ghost" type="button" data-close>סגירה</button></div></form>`;
   el.hidden=false;
   const form=$("#nq");
-  const lines=()=>[...form.querySelectorAll(".iline")].map(r=>({description:r.querySelector('[data-l="description"]').value.trim(),quantity:num(r.querySelector('[data-l="quantity"]').value)||1,price:num(r.querySelector('[data-l="price"]').value)})).filter(l=>l.description&&l.price);
-  const body=()=>({client:$("#nqC").value.trim(),phone:$("#nqP").value.trim(),email:$("#nqE").value.trim(),address:$("#nqA").value.trim(),description:$("#nqD").value.trim(),remarks:$("#nqR").value.trim(),vat_included:$("#nqI").checked,lines:lines(),project_id:pre.project_id||undefined});
-  const tot=()=>{const b=body(),net=b.lines.reduce((a,l)=>a+l.quantity*l.price,0),t=b.vat_included?net:net*1.18;$("#nqT").innerHTML=`<span>סה״כ ${b.vat_included?"כולל מע״מ":"לפני מע״מ "+ils(net)+" · כולל מע״מ"}</span><span>${ils(t)}</span>`};
+  const rows=()=>[...form.querySelectorAll(".iline")];
+  const val=(r,k)=>r.querySelector(`[data-l="${k}"]`).value;
+  const lines=()=>rows().map(r=>({description:val(r,"description").trim(),quantity:num(val(r,"quantity"))||1,price:num(val(r,"price")),cost:val(r,"cost")===""?null:num(val(r,"cost"))})).filter(l=>l.description&&l.price);
+  const groups=ls=>{const g={};ls.forEach(l=>{const m=l.description.match(/^(.+?) · /);if(m)g[m[1]]=(g[m[1]]||0)+l.quantity*l.price});return g};
+  const remarks=()=>{let r=$("#nqR").value.trim();const g=groups(lines()),k=Object.keys(g);
+    if(k.length>1&&!/^סה״כ /.test(r))r=`סה״כ ${k.map(x=>`${x}: ${ils(g[x])}`).join(" · ")} (${$("#nqI").checked?"כולל":"לפני"} מע״מ)\n`+r;return r};
+  const body=()=>({client:$("#nqC").value.trim(),phone:$("#nqP").value.trim(),email:$("#nqE").value.trim(),address:$("#nqA").value.trim(),description:$("#nqD").value.trim(),remarks:remarks(),vat_included:$("#nqI").checked,lines:lines().map(({cost,...l})=>l),project_id:pre.project_id||undefined});
+  const tot=()=>{const ls=lines(),net=ls.reduce((a,l)=>a+l.quantity*l.price,0),t=$("#nqI").checked?net:net*1.18,netEx=$("#nqI").checked?net/1.18:net;
+    const cost=ls.reduce((a,l)=>a+(l.cost||0)*l.quantity,0),miss=ls.filter(l=>l.cost==null).length,w=num($("#nqW").value),pr=netEx-cost-w;
+    $("#nqT").innerHTML=`<div class="sum"><span>סה״כ ${$("#nqI").checked?"כולל מע״מ":"לפני מע״מ "+ils(net)+" · כולל מע״מ"}</span><span>${ils(t)}</span></div>
+      ${Object.entries(groups(ls)).map(([k,v])=>`<div class="sum plain"><span>${esc(k)}</span><span>${ils(v)}</span></div>`).join("")}
+      <div class="sum plain"><span>עלות ציוד${miss?` (חסרה עלות ב־${miss} שורות)`:""}</span><span>${ils(cost)}</span></div>
+      ${w?`<div class="sum plain"><span>עבודה / עובד</span><span>${ils(w)}</span></div>`:""}
+      <div class="sum"><span>נשאר לך (לפני מע״מ)</span><span>${ils(pr)} · ${netEx?Math.round(pr/netEx*100):0}%</span></div>`};
   form.addEventListener("input",tot);tot();
+  $("#nqMode").onchange=()=>{$("#nqMk").hidden=$("#nqMode").value!=="markup"};
   $("#nqAdd").onclick=()=>{$("#nqL").insertAdjacentHTML("beforeend",line());};
-  form.addEventListener("click",e=>{const r=e.target.closest("[data-rmline]");if(r&&form.querySelectorAll(".iline").length>1){r.closest(".iline").remove();tot()}});
+  form.addEventListener("click",e=>{const r=e.target.closest("[data-rmline]");if(r&&rows().length>1){r.closest(".iline").remove();tot()}});
+  $("#nqTgB").onclick=()=>{const tg=num($("#nqTg").value),R=rows().filter(r=>num(val(r,"price"))>0);if(!tg||!R.length)return;
+    const cur=R.reduce((a,r)=>a+num(val(r,"price"))*(num(val(r,"quantity"))||1),0),f=tg/cur;
+    R.forEach(r=>{const p=num(val(r,"price"))*f;r.querySelector('[data-l="price"]').value=p>=50?Math.round(p/10)*10:Math.round(p)});
+    const now=R.reduce((a,r)=>a+num(val(r,"price"))*(num(val(r,"quantity"))||1),0),diff=tg-now;
+    const big=R.filter(r=>(num(val(r,"quantity"))||1)===1).sort((a,b)=>num(val(b,"price"))-num(val(a,"price")))[0];
+    if(big&&diff)big.querySelector('[data-l="price"]').value=num(val(big,"price"))+diff;else if(diff)toast("נשאר הפרש של "+ils(diff)+" – תקן ידנית");tot()};
   const call=async b=>{const res=await sb.functions.invoke("issue",{body:b});let r=res.data;if(res.error&&res.error.context&&res.error.context.json){try{r=await res.error.context.json()}catch(x){}}return r||{ok:false,message:"אין תשובה מהשרת"}};
+  const b64=f=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(",")[1]);r.onerror=no;r.readAsDataURL(f)});
+  $("#nqRead").onclick=async()=>{const fs=[...$("#nqF").files];if(!fs.length){toast("בחר קבצים קודם");return}
+    if(fs.reduce((a,f)=>a+f.size,0)>12e6){toast("הקבצים גדולים מדי");return}
+    const btn=$("#nqRead");btn.disabled=true;btn.textContent="קורא את הקבצים… (עד דקה)";
+    try{const files=await Promise.all(fs.map(async f=>({name:f.name,mime:f.type||"application/pdf",b64:await b64(f)})));
+      const r=await call({action:"quote_draft",files});if(!r.ok)throw new Error(r.message||"לא הצלחתי לקרוא");
+      const d=r.draft||{},ls=d.lines||[],gs=[...new Set(ls.map(l=>l.group).filter(Boolean))],mode=$("#nqMode").value,mul=num($("#nqMul").value)||2.2;
+      const price=l=>mode==="comp"&&l.competitor_price?num(l.competitor_price):l.cost!=null?(()=>{const p=num(l.cost)*mul;return p>=50?Math.round(p/10)*10:Math.round(p)})():"";
+      $("#nqL").innerHTML=ls.map(l=>line({description:(gs.length>1&&l.group?l.group+" · ":"")+(l.description||""),quantity:l.quantity||1,cost:l.cost??"",price:price(l)})).join("")||line();
+      if(d.client&&!$("#nqC").value)$("#nqC").value=d.client;if(d.title&&!$("#nqD").value)$("#nqD").value=d.title;
+      const c=d.competitor||{},mon=(c.monthly||[]).filter(m=>m.description);
+      if(mon.length&&!/מחיר חודשי/.test($("#nqR").value))$("#nqR").value=`שירות מוקד – מחיר חודשי${gs.length>1?" לכל אתר":""} (לפני מע״מ):\n${mon.map(m=>`• ${m.description}: ${m.price} ₪`).join("\n")}\n\n`+$("#nqR").value;
+      const n=$("#nqNote");n.hidden=false;n.innerHTML=`נקראו ${ls.length} פריטים${c.total?` · המתחרה${c.name?" ("+esc(c.name)+")":""}: ${ils(c.total)} לפני מע״מ`:""}${d.notes?"<br>"+esc(d.notes):""}<br><b>תבדוק כל שורה ותתקן לפני יצירה.</b>`;
+      tot();toast("הטיוטה מוכנה – תבדוק ותתקן")}catch(e){toast(e.message||"שגיאה")}
+    btn.disabled=false;btn.textContent="🤖 קריאת הקבצים והכנת טיוטה"};
   const check=b=>{if(!b.client){toast("חסר שם לקוח");return false}if(!b.lines.length){toast("צריך לפחות שורה אחת עם תיאור ומחיר");return false}return true};
   $("#nqPrev").onclick=async()=>{const b=body();if(!check(b))return;const w=window.open("","_blank");toast("מכין תצוגה מקדימה…");
     const r=await call({...b,action:"quote_preview"});if(!r.ok||!r.pdf){if(w)w.close();toast(r.message||"התצוגה לא נפתחה");return}openPdf64(r.pdf,w)};
@@ -715,9 +759,22 @@ function newQuoteSheet(pre={}){
     const btn=form.querySelector('[type=submit]');btn.disabled=true;btn.textContent="יוצר…";
     const r=await call({...b,action:"quote"});
     if(!r.ok){btn.disabled=false;btn.textContent="יצירה ב-Morning";toast(r.message||"לא נוצרה");return}
-    toast(`נוצרה הצעת מחיר ${r.number||""}`);el.hidden=true;await loadAll();if(r.id)openQuote(r.id)};
+    toast(`נוצרה הצעת מחיר ${r.number||""}`);
+    if(old&&confirm(`לסגור ב-Morning את ההצעה הקודמת ${old.number}?`)){const c=await call({action:"quote_close",id:old.id});if(!c.ok)toast(c.message||"ההצעה הקודמת לא נסגרה")}
+    el.hidden=true;await loadAll();if(r.id)openQuote(r.id)};
 }
-document.addEventListener("click",e=>{if(e.target.closest("[data-newquote]")){e.preventDefault();newQuoteSheet()}});
+async function fixQuote(id){
+  toast("טוען את ההצעה…");
+  const res=await sb.functions.invoke("issue",{body:{action:"quote_get",id}});const r=res.data||{};
+  if(!r.ok){toast(r.message||"ההצעה לא נטענה");return}
+  newQuoteSheet({...r,replaces:id});
+}
+document.addEventListener("click",e=>{if(e.target.closest("[data-newquote]")){e.preventDefault();newQuoteSheet()}
+  const fx=e.target.closest("[data-fixquote]");if(fx){e.preventDefault();fixQuote(fx.dataset.fixquote)}
+  const cl=e.target.closest("[data-closequote]");if(cl){e.preventDefault();(async()=>{const d=data.morning_docs.find(x=>x.id===cl.dataset.closequote);
+    if(!d||!confirm(`לסגור ב-Morning את הצעה ${d.number}? (היא תסומן כסגורה ולא תופיע ברשימה)`))return;
+    const res=await sb.functions.invoke("issue",{body:{action:"quote_close",id:d.id}});const r=res.data||{};
+    if(!r.ok){toast(r.message||"לא נסגרה");return}toast(`הצעה ${d.number} נסגרה`);$("#sheet").hidden=true;await loadAll()})()}});
 function openQuote(id){
   const d=data.morning_docs.find(x=>x.id===id);if(!d)return;
   const f=fu(d),el=$("#sheet");
@@ -732,6 +789,7 @@ function openQuote(id){
    <div class="f"><label for="q_notes">הערות (מה הלקוח אמר)</label><textarea id="q_notes">${esc(f.notes||"")}</textarea></div>
    ${projOfQuote(d.id)?`<button class="btn ghost" type="button" data-open-project="${esc(projOfQuote(d.id).id)}">📐 פרויקט: ${esc(projOfQuote(d.id).name)}</button>`:""}
    ${job?`<button class="btn ghost" type="button" data-open-job="${esc(job.id)}">פתיחת העבודה של ההצעה</button>`:`<button class="btn ghost" type="button" id="q_won">🎉 זכינו – לפתוח עבודה</button>`}
+   <div class="bar"><button class="btn ghost" type="button" data-fixquote="${esc(d.id)}" style="flex:1">✏️ תיקון (הצעה חדשה במקומה)</button><button class="btn ghost" type="button" data-closequote="${esc(d.id)}">סגירה ב-Morning</button></div>
    <div class="actions"><button class="btn" type="submit">שמירה</button><button class="btn ghost" type="button" data-close>סגירה</button></div></form>`;
   el.hidden=false;
   const form=$("#qform"),ph=$("#q_phone"),wa=$("#q_wa"),call=$("#q_call");
