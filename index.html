@@ -2025,7 +2025,8 @@ function invView(){
    <div class="filters" role="group" aria-label="סינון">${[["check","לבדיקה"],["all","כל החודש"],["ok","מאושרות"],["no","לא רלוונטי"]].map(([v,l])=>`<button type="button" class="chipbtn" data-filt="${v}" aria-pressed="${v===f}">${l}</button>`).join("")}</div>
    <div class="list">${items.length?items.map(invRow).join(""):`<div class="empty">${f==="check"?"אין חשבוניות לבדיקה 👌":"אין חשבוניות בחודש הזה."}</div>`}</div>
    <div class="bar" style="margin-top:10px"><button class="btn" type="button" id="invMorning" style="flex:1" ${toMorning.length?"":"disabled"}>שליחה ל-Morning (${toMorning.length})</button>
-    <button class="btn" type="button" id="invSend" style="flex:1" ${ok.length?"":"disabled"}>שליחה לרו״ח (${ok.length})</button></div>
+    <button class="btn" type="button" id="invSend" style="flex:1" ${ok.length?"":"disabled"}>שליחה לרו״ח במייל (${ok.length})</button></div>
+   <button class="btn" type="button" id="invWa" style="width:100%;margin-top:6px" ${exp.length?"":"disabled"}>📲 שליחה לרו״ח בוואטסאפ (${ok.length||exp.length} קבצים)</button>
    ${sendNote?`<div class="note">${esc(sendNote)}</div>`:""}
    <div class="note">רו״ח: ${accountant()?`<b dir="ltr">${esc(accountant())}</b>`:"עוד לא הוגדר"} · <a href="#" id="invAcc">${accountant()?"שינוי":"הגדרה"}</a><br>חשבוניות שמגיעות למייל נכנסות לכאן לבד כל שעה. לרו״ח נשלחות רק חשבוניות מאושרות של החודש שמוצג.</div>`;
 }
@@ -2096,6 +2097,28 @@ async function invSetAccountant(){
   const {error}=await sb.from("app_settings").upsert({key:"accountant_email",value:m,updated_at:new Date().toISOString()});
   if(error){toast("לא נשמר");return null}toast("נשמר");await loadAll();return m;
 }
+/* WhatsApp to the accountant: the month's invoice files through the phone's share sheet (pick the accountant's chat).
+   Approved invoices only if any are approved, otherwise every expense of the month that is not marked "לא רלוונטי". */
+async function invShareWA(btn){
+  const exp=invAll().filter(x=>x.month===invMonth&&x.kind==="expense"&&x.status!=="לא רלוונטי"&&x.file_path);
+  const ok=exp.filter(x=>x.status==="מאושר"),list=ok.length?ok:exp;
+  if(!list.length)return;
+  const total=list.reduce((s,x)=>s+num(x.amount),0);
+  const text=`חשבוניות הוצאה – ${heMonth(invMonth)} · אהרן מערכות\n${list.length} מסמכים · סה״כ ${ils(total)}\n`+list.map(x=>`• ${x.supplier||""} ${x.doc_number||""} – ${ils(x.amount)}`).join("\n");
+  if(!confirm(`לשלוח בוואטסאפ ${list.length} קבצים של ${heMonth(invMonth)} (${ils(total)})?${ok.length?"":"\n\nשים לב: אף חשבונית עוד לא אושרה – יישלחו כל ההוצאות של החודש."}\n\nבחלון שייפתח בוחרים את הצ'אט של רואת החשבון.`))return;
+  btn.disabled=true;const lbl=btn.textContent;btn.textContent="מכין קבצים…";
+  try{
+    const files=[];
+    for(const x of list){const {data:u}=await sb.storage.from("invoices").createSignedUrl(x.file_path,600);if(!u)continue;
+      const b=await fetch(u.signedUrl).then(r=>r.blob());const ext=(x.file_path.match(/\.([a-z0-9]+)$/i)||[,"pdf"])[1];
+      const nm=`${x.doc_date||""} ${x.supplier||"חשבונית"} ${x.doc_number||""}`.replace(/[\\/:*?"<>|]+/g," ").replace(/\s+/g," ").trim()+"."+ext;
+      files.push(new File([b],nm,{type:b.type||x.mime||"application/pdf"}))}
+    if(navigator.canShare&&navigator.canShare({files})){await navigator.share({files,text});toast("נשלח לשיתוף")}
+    else{const links=[];for(const x of list){const {data:u}=await sb.storage.from("invoices").createSignedUrl(x.file_path,7*86400);if(u)links.push(`${x.supplier||""} ${x.doc_number||""}: ${u.signedUrl}`)}
+      window.open("https://wa.me/?text="+encodeURIComponent(text+"\n\nקישורים לקבצים (7 ימים):\n"+links.join("\n")),"_blank");toast("במחשב נשלחים קישורים. מהטלפון יישלחו הקבצים עצמם")}
+  }catch(e){if(e&&e.name!=="AbortError")toast("השיתוף לא הצליח")}
+  btn.disabled=false;btn.textContent=lbl;
+}
 async function invSendAccountant(btn){
   let to=accountant();if(!to){to=await invSetAccountant();if(!to)return}
   const ok=invAll().filter(x=>x.month===invMonth&&x.kind==="expense"&&x.status==="מאושר");
@@ -2147,6 +2170,7 @@ document.addEventListener("click",async e=>{
   const im=e.target.closest("[data-invm]");if(im){invMonth=ymAdd(invMonth||ymNow(),Number(im.dataset.invm));if(filt.invoices==="check")filt.invoices="all";render();return}
   if(e.target.closest("#invAcc")){e.preventDefault();invSetAccountant();return}
   if(e.target.closest("#invSend")){invSendAccountant(e.target.closest("#invSend"));return}
+  if(e.target.closest("#invWa")){invShareWA(e.target.closest("#invWa"));return}
   if(e.target.closest("#invMorning")){invToMorning(e.target.closest("#invMorning"));return}
   const g=e.target.closest("[data-go]");if(g){e.preventDefault();if(g.dataset.f)filt[g.dataset.go]=g.dataset.f;go(g.dataset.go);return}
   const n=e.target.closest("[data-new]");if(n){openSheet(n.dataset.new);return}
