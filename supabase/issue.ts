@@ -191,6 +191,60 @@ async function fillWarranty(d: any, sigBytes?: Uint8Array | null) {
   return new Uint8Array(await doc.save());
 }
 
+
+/* ---------- check report PDF (דוח בדיקה ואישור תקינות) – the printed form, filled ---------- */
+const R_LAYOUT: any = {
+  no: [243, 164, 299, 184],
+  f: {client: [300, 478, 216], date: [40, 205, 216], address: [300, 504, 238.5], phone: [40, 252, 238.5], next: [340, 478, 671]},
+  visit: {"התקנה חדשה": [472, 256], "תחזוקה תקופתית": [373, 256], "קריאת שירות": [256, 256], "אישור לביטוח": [159, 256]},
+  alarm: {y0: 302, dy: 15, n: 8, dl: 128, dr: 428},
+  cams: {y0: 452, dy: 15, n: 9, dl: 128, dr: 403},
+  ok: 107, bad: 61,
+  result: [[540, 614], [540, 631], [540, 648]],
+  notes: [[40, 278, 618], [40, 278, 636], [40, 278, 654]],
+  sigInstaller: [345, 478, 715], sigClient: [40, 203, 715],
+};
+let reportTpl: Uint8Array | null = null;
+async function fillReport(d: any, sigClient?: Uint8Array | null, sigInstaller?: Uint8Array | null) {
+  const {font: fontBytes} = await loadAssets();
+  if (!reportTpl) { const r = await fetch(ASSETS + "report-template.pdf"); if (!r.ok) throw new Error("חסר קובץ report-template.pdf"); reportTpl = new Uint8Array(await r.arrayBuffer()); }
+  const {PDFDocument, rgb} = PDFLib as any;
+  const doc = await PDFDocument.load(reportTpl); doc.registerFontkit(fontkit);
+  const font = await doc.embedFont(fontBytes, {subset: true});
+  const pg = doc.getPages()[0]; const H = pg.getHeight(); const L = R_LAYOUT;
+  const navy = rgb(0.06, 0.16, 0.36), red = rgb(0.753, 0.224, 0.169), green = rgb(0.13, 0.55, 0.3), white = rgb(1, 1, 1);
+  const txt = (text: unknown, l: number, r: number, yb: number, size = 11, color = navy) => {
+    const t = String(text ?? "").replace(/\s+/g, " ").trim(); if (!t) return;
+    const v = visual(t); let s = size; const maxW = r - l - 4;
+    while (s > 6.5 && font.widthOfTextAtSize(v, s) > maxW) s -= 0.5;
+    pg.drawText(v, {x: r - 2 - font.widthOfTextAtSize(v, s), y: H - yb, size: s, font, color});
+  };
+  const tick = (cx: number, cy: number, color: any) => pg.drawSvgPath("M 0 5 L 3.6 9 L 10 0", {x: cx - 5, y: H - cy + 4.5, borderColor: color, borderWidth: 2.2});
+  const cross = (cx: number, cy: number, color: any) => pg.drawSvgPath("M 0 0 L 8 8 M 8 0 L 0 8", {x: cx - 4, y: H - cy + 4, borderColor: color, borderWidth: 2});
+  if (d.no) {
+    const [x0, y0, x1, y1] = L.no; pg.drawRectangle({x: x0, y: H - y1, width: x1 - x0, height: y1 - y0, color: white});
+    const t = String(d.no), s = 16, w = font.widthOfTextAtSize(t, s) + (t.length - 1) * 1.2;
+    let x = (x0 + x1) / 2 - w / 2; for (const ch of t) { pg.drawText(ch, {x, y: H - y1 + 4, size: s, font, color: red}); x += font.widthOfTextAtSize(ch, s) + 1.2; }
+  }
+  for (const k of ["client", "date", "address", "phone", "next"]) { const f = L.f[k]; txt(d[k], f[0], f[1], f[2], 11.5); }
+  for (const v of d.visit || []) { const c = L.visit[v]; if (c) tick(c[0], c[1], navy); }
+  const rows = (sec: any, arr: any[]) => (arr || []).slice(0, sec.n).forEach((r: any, i: number) => {
+    if (!r) return; const yc = sec.y0 + i * sec.dy;
+    txt(r.detail, sec.dl, sec.dr, yc + 3.5, 9.5);
+    if (r.ok === true) tick(L.ok, yc, green); else if (r.ok === false) cross(L.bad, yc, red);
+  });
+  rows(L.alarm, d.alarm); rows(L.cams, d.cams);
+  if (d.result != null && L.result[d.result]) { const [cx, cy] = L.result[d.result]; pg.drawCircle({x: cx, y: H - cy, size: 3.6, color: navy}); }
+  (d.notes || []).slice(0, 3).forEach((n: string, i: number) => { const [l, r, y] = L.notes[i]; txt(n, l, r, y - 1, 10); });
+  const sig = async (bytes: Uint8Array | null | undefined, box: number[]) => {
+    if (!bytes) return;
+    try { const img = await doc.embedPng(bytes); const hh = 26, ww = Math.min(box[1] - box[0] - 4, img.width * hh / img.height); pg.drawImage(img, {x: box[1] - 2 - ww, y: H - box[2] + 1, width: ww, height: hh}); } catch (_) { /* optional */ }
+  };
+  await sig(sigInstaller, L.sigInstaller); await sig(sigClient, L.sigClient);
+  doc.setTitle("דוח בדיקה ואישור תקינות " + (d.no || "")); doc.setAuthor("אהרן מערכות");
+  return new Uint8Array(await doc.save());
+}
+
 /* ---------- mail (owner's Gmail via the Apps Script web app) ---------- */
 function mailHtml(o: {first: string; docName: string; wNo: string; summary: string; payLink?: string}) {
   const parts = [o.docName, o.wNo ? "תעודת אחריות מספר " + o.wNo : ""].filter(Boolean);
@@ -278,6 +332,12 @@ Deno.serve(async (req) => {
       return json({ok: true, id: created.id, number: created.number, url, total});
     }
 
+    // next free digital check-report number (the printed pads are 200001–200050)
+    if (action === "report_next") {
+      const {data} = await sb.from("jobs").select("report_no").not("report_no", "is", null);
+      const nums = (data || []).map((r: any) => Number(String(r.report_no).replace(/\D/g, ""))).filter((n: number) => n >= 400001 && n < 500000);
+      return json({ok: true, next: String(nums.length ? Math.max(...nums) + 1 : 400001)});
+    }
     if (action === "next") {
       const {data} = await sb.from("jobs").select("warranty_no").not("warranty_no", "is", null);
       // digital certificates (sent by mail from the app) have their own series 300001+; printed ones are 100001-100100 and typed in by hand
@@ -293,6 +353,28 @@ Deno.serve(async (req) => {
       if (dup && dup.length) throw new Error(`תעודה ${wNo} כבר רשומה על ${dup[0].client}`);
     }
     const sig = job.signature_path ? await sb.storage.from("jobfiles").download(job.signature_path).then(async r => r.data ? new Uint8Array(await r.data.arrayBuffer()) : null).catch(() => null) : null;
+    // check report for this job: preview, or save (PDF to storage + numbers on the job). Installer signature from settings.
+    if (action === "report_preview" || action === "report_save") {
+      const rep = b.report || {};
+      const rNo = String(rep.no || "").replace(/\D/g, "");
+      if (action === "report_save") {
+        if (!rNo) throw new Error("חסר מספר דוח");
+        const {data: dup} = await sb.from("jobs").select("id,client").eq("report_no", rNo).neq("id", job.id).limit(1);
+        if (dup && dup.length) throw new Error(`דוח ${rNo} כבר רשום על ${dup[0].client}`);
+      }
+      const insPath = await setting("installer_signature");
+      const insSig = insPath ? await sb.storage.from("jobfiles").download(insPath).then(async r => r.data ? new Uint8Array(await r.data.arrayBuffer()) : null).catch(() => null) : null;
+      const d = {...rep, no: rNo, client: rep.client ?? job.client, address: rep.address ?? (job.address || job.place), phone: rep.phone ?? job.phone,
+        date: heDate(rep.date || job.date || ""), next: rep.next ? heDate(rep.next) : ""};
+      const pdf = await fillReport(d, rep.client_sig === false ? null : sig, rep.installer_sig === false ? null : insSig);
+      if (action === "report_preview") return json({ok: true, pdf: bytesToB64(pdf), installer_sig: !!insSig});
+      const path = `${job.id}/report-${rNo}.pdf`;
+      const up = await sb.storage.from("jobfiles").upload(path, pdf, {contentType: "application/pdf", upsert: true});
+      if (up.error) throw new Error("שמירת הדוח נכשלה: " + up.error.message);
+      const {no: _n, ...keep} = rep;
+      await sb.from("jobs").update({report_no: rNo, report_path: path, report_data: keep, report_at: new Date().toISOString(), updated_at: new Date().toISOString()}).eq("id", job.id);
+      return json({ok: true, path, no: rNo, installer_sig: !!insSig});
+    }
     const wData = (docRef: string) => ({no: wNo, client: b.client || job.client, date: heDate(b.warranty?.date || job.date || ""), address: b.address ?? job.address ?? job.place,
       phone: b.phone ?? job.phone, items: b.warranty?.items || [], details: b.warranty?.details ?? job.summary ?? job.work, docRef});
 

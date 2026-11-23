@@ -1342,6 +1342,10 @@ async function jobView(m){
     :`<button class="btn" type="button" id="signBtn" style="padding:14px">✍️ החתמת לקוח על אישור ביצוע</button>`}
    </section>
 
+   <section class="jcard"><h3>📋 דוח בדיקה ואישור תקינות</h3>
+    <div class="note" style="margin:0">לביטוח, להתקנה חדשה, לתחזוקה או לקריאת שירות. הטופס שלך עם חתימה דיגיטלית.</div>
+    <div class="bar" style="margin:0"><button class="btn" type="button" data-report="${esc(j.id)}" style="flex:1">${j.report_no?`✏️ דוח ${esc(j.report_no)}`:"📋 דוח חדש"}</button>${j.report_path?`<button class="btn ghost" type="button" data-jfile="${esc(j.report_path)}" style="flex:1">📄 הדוח</button><button class="btn ghost" type="button" data-repshare="${esc(j.id)}">📲</button>`:""}</div>
+   </section>
    <section class="jcard"><h3>🧾 חשבונית ואחריות</h3>
     ${doc?`<div class="drow jdoc"><div class="dm"><b>${esc(doc.type_name)} ${esc(doc.number)}</b><span>${heDate(doc.doc_date)}${doc.status===0&&doc.type!==400?' · <span style="color:var(--bad)">פתוחה</span>':' · <span style="color:var(--good)">סגורה</span>'}</span></div><div class="dr"><b>${ils(doc.amount)}</b>${doc.url?`<a class="btn ghost" href="${esc(doc.url)}" target="_blank" rel="noopener">📄 צפייה</a>`:""}</div></div>`:""}
     <div class="pair"><div class="f"><label for="jWno">מס׳ תעודת אחריות</label><input id="jWno" type="text" inputmode="numeric" dir="ltr" placeholder="מהתעודה המודפסת" value="${esc(j.warranty_no||"")}"></div>
@@ -1641,6 +1645,98 @@ function signaturePad(j){
     Object.assign(j,patch);ov.remove();toast("החתימה נשמרה");render();
   };
 }
+/* installer's own signature – drawn once, used on every check report */
+function installerSigPad(done){
+  const ov=document.createElement("div");ov.className="sigpad";
+  ov.innerHTML=`<h3 style="margin:0;font:700 18px var(--display)">✍️ החתימה שלך (המתקין)</h3>
+   <div class="note" style="font-size:14px">חותמים פעם אחת. החתימה תופיע בכל דוח בדיקה ואישור תקינות, ליד "חתימת הבודק".</div>
+   <canvas id="isCanvas" aria-label="משטח חתימה"></canvas>
+   <div class="actions"><button class="btn" type="button" id="isSave">שמירה</button><button class="btn ghost" type="button" id="isClear">ניקוי</button><button class="btn ghost" type="button" id="isCancel">ביטול</button></div>`;
+  document.body.appendChild(ov);
+  const c=ov.querySelector("#isCanvas"),g=c.getContext("2d");let drawing=false,dirty=false,last=null;
+  const fit=()=>{const r=c.getBoundingClientRect(),dpr=window.devicePixelRatio||1;c.width=r.width*dpr;c.height=r.height*dpr;g.setTransform(dpr,0,0,dpr,0,0);g.lineWidth=2.8;g.lineCap="round";g.lineJoin="round";g.strokeStyle="#0c1d47";dirty=false};
+  setTimeout(fit,50);
+  const pt=e=>{const r=c.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top}};
+  c.addEventListener("pointerdown",e=>{drawing=true;last=pt(e);c.setPointerCapture(e.pointerId);e.preventDefault()});
+  c.addEventListener("pointermove",e=>{if(!drawing)return;const q=pt(e);g.beginPath();g.moveTo(last.x,last.y);g.lineTo(q.x,q.y);g.stroke();last=q;dirty=true;e.preventDefault()});
+  ["pointerup","pointercancel","pointerleave"].forEach(ev=>c.addEventListener(ev,()=>drawing=false));
+  ov.querySelector("#isClear").onclick=fit;ov.querySelector("#isCancel").onclick=()=>ov.remove();
+  ov.querySelector("#isSave").onclick=async()=>{
+    if(!dirty){toast("צריך לחתום על המשטח");return}
+    const b=ov.querySelector("#isSave");b.disabled=true;b.textContent="שומר…";
+    const blob=await new Promise(ok=>c.toBlob(ok,"image/png")); // transparent background, sits on the form's line
+    const path=`owner/installer-signature-${Date.now()}.png`;
+    const up=await sb.storage.from("jobfiles").upload(path,blob,{contentType:"image/png"});
+    if(up.error){toast("החתימה לא נשמרה");b.disabled=false;b.textContent="שמירה";return}
+    const {error}=await sb.from("app_settings").upsert({key:"installer_signature",value:path,updated_at:new Date().toISOString()});
+    if(error){toast("החתימה לא נשמרה");b.disabled=false;return}
+    const r=(data.app_settings||[]).find(x=>x.key==="installer_signature");if(r)r.value=path;else(data.app_settings=data.app_settings||[]).push({key:"installer_signature",value:path});
+    ov.remove();toast("החתימה שלך נשמרה");if(done)done()};
+}
+/* check report (דוח בדיקה ואישור תקינות) – the printed form, filled from the job, with digital signatures */
+const R_ALARM=["רכזת – יצרן ודגם","לוח מקשים וקוד משתמש","צופר פנימי / חיצוני","גלאים ומגנטים – כל האזורים","מיקרו־סוויץ׳ (טמפר)","שנאי וסוללת גיבוי (מתח)","חייגן / אפליקציה","חיבור למוקד – שם המוקד"];
+const R_CAMS=["מערכת הקלטה – יצרן ודגם","מצלמות – כמות ורזולוציה","איכות תמונה יום / לילה","כונן קשיח – נפח ומצב","ימי הקלטה בפועל","שעון ותאריך במערכת","צפייה מרחוק בנייד","סיסמה מאובטחת (לא ברירת מחדל)","גיבוי חשמל (UPS)"];
+const R_VISIT=["התקנה חדשה","תחזוקה תקופתית","קריאת שירות","אישור לביטוח"];
+async function reportSheet(j){
+  const el=$("#sheet"),old=j.report_data||{};
+  let no=j.report_no||"";
+  if(!no){const r=await sb.functions.invoke("issue",{body:{action:"report_next"}});no=(r.data&&r.data.next)||""}
+  const today=new Date().toLocaleDateString("sv-SE"),date=old.date||j.date||today;
+  const nextY=d=>{const t=new Date(d+"T12:00:00");t.setFullYear(t.getFullYear()+1);return t.toLocaleDateString("sv-SE")};
+  const hasInst=()=>!!((data.app_settings||[]).find(x=>x.key==="installer_signature")||{}).value;
+  const visit=old.visit||(j.kind==="התקנה"||!j.kind?["התקנה חדשה"]:j.kind==="תיקון"?["קריאת שירות"]:[]);
+  const isAlarm=old.alarm?old.alarm.some(r=>r&&(r.detail||r.ok!=null)):/אזעק|ריסקו|risco|פימא|pima|ajax/i.test((j.work||"")+(j.summary||""));
+  const isCams=old.cams?old.cams.some(r=>r&&(r.detail||r.ok!=null)):/מצלמ|nvr|dvr|הקלטה/i.test((j.work||"")+(j.summary||""));
+  const row=(sec,i,label,r={})=>`<div class="rrow" data-sec="${sec}" data-i="${i}" style="display:grid;grid-template-columns:1fr 38px 38px;gap:5px;align-items:end">
+     <div class="f" style="margin:0"><label>${esc(label)}</label><input data-r="detail" type="text" value="${esc(r.detail||"")}" placeholder="פירוט / מיקום"></div>
+     <button type="button" class="btn ${r.ok===true?"":"ghost"}" data-ok="1" title="תקין" style="padding:9px 0">✓</button>
+     <button type="button" class="btn ${r.ok===false?"":"ghost"}" data-ok="0" title="לא תקין" style="padding:9px 0">✗</button></div>`;
+  const sec=(key,title,labels,arr,open)=>`<details class="jcard" ${open?"open":""} style="margin:8px 0"><summary><b>${title}</b> <button type="button" class="btn ghost" data-allok="${key}" style="padding:4px 10px;margin-inline-start:8px">✓ הכל תקין</button></summary>
+     ${labels.map((l,i)=>row(key,i,l,(arr||[])[i]||{})).join("")}</details>`;
+  el.innerHTML=`<form id="rp" novalidate><h3>📋 דוח בדיקה ואישור תקינות</h3>
+   <div class="pair"><div class="f"><label for="rpNo">מס׳ בדיקה</label><input id="rpNo" dir="ltr" inputmode="numeric" value="${esc(no)}"></div><div class="f"><label for="rpDate">תאריך הבדיקה</label><input id="rpDate" type="date" value="${esc(date)}"></div></div>
+   <div class="pair"><div class="f"><label for="rpC">שם המזמין</label><input id="rpC" value="${esc(old.client||j.client||"")}"></div><div class="f"><label for="rpP">טלפון</label><input id="rpP" dir="ltr" value="${esc(old.phone||j.phone||"")}"></div></div>
+   <div class="f"><label for="rpA">כתובת</label><input id="rpA" value="${esc(old.address||j.address||j.place||"")}"></div>
+   <div class="f"><label>סוג הביקור</label><div class="bar" style="flex-wrap:wrap;gap:10px;margin:0">${R_VISIT.map(v=>`<label class="vchk" style="margin:0"><input type="checkbox" data-visit="${esc(v)}" ${visit.includes(v)?"checked":""}> ${esc(v)}</label>`).join("")}</div></div>
+   ${sec("alarm","🚨 מערכת אזעקה",R_ALARM,old.alarm,isAlarm)}
+   ${sec("cams","📷 מצלמות אבטחה",R_CAMS,old.cams,isCams)}
+   <div class="f"><label>תוצאת הבדיקה</label>${["תקינה ופועלת במלואה","תקינה – עם המלצות לטיפול","לא תקינה – נדרש תיקון / החלפה"].map((t,i)=>`<label class="vchk" style="margin:2px 0"><input type="radio" name="rpRes" value="${i}" ${(old.result??0)===i?"checked":""}> ${t}</label>`).join("")}</div>
+   ${[0,1,2].map(i=>`<div class="f"><label for="rpN${i}">הערה / המלצה ${i+1}</label><input id="rpN${i}" value="${esc((old.notes||[])[i]||"")}"></div>`).join("")}
+   <div class="f"><label for="rpNext">בדיקה הבאה עד</label><input id="rpNext" type="date" value="${esc(old.next||nextY(date))}"></div>
+   <label class="vchk"><input type="checkbox" id="rpIs" ${old.installer_sig===false?"":"checked"}> חתימת הבודק (שלך) ${hasInst()?"":`– <a href="#" id="rpIsSet">עוד אין, לחתום עכשיו</a>`}</label>
+   <label class="vchk"><input type="checkbox" id="rpCs" ${j.signature_path&&old.client_sig!==false?"checked":""} ${j.signature_path?"":"disabled"}> חתימת המזמין ${j.signature_path?"(מהחתימה בכרטיס העבודה)":"– אין עדיין. החתמה בכרטיס העבודה: ✍️"}</label>
+   <div class="actions"><button class="btn ghost" type="button" id="rpPrev">👁️ תצוגה מקדימה</button><button class="btn" type="submit">💾 שמירת הדוח</button><button class="btn ghost" type="button" data-close>סגירה</button></div></form>`;
+  el.hidden=false;
+  const form=$("#rp");
+  form.addEventListener("click",e=>{
+    const b=e.target.closest("[data-ok]");if(b){const r=b.closest(".rrow"),v=b.dataset.ok==="1",on=!b.classList.contains("ghost");
+      r.querySelectorAll("[data-ok]").forEach(x=>x.classList.add("ghost"));if(!on)b.classList.remove("ghost");void v;return}
+    const a=e.target.closest("[data-allok]");if(a){e.preventDefault();form.querySelectorAll(`.rrow[data-sec="${a.dataset.allok}"]`).forEach(r=>{r.querySelector('[data-ok="1"]').classList.remove("ghost");r.querySelector('[data-ok="0"]').classList.add("ghost")});a.closest("details").open=true;return}
+    if(e.target.id==="rpIsSet"){e.preventDefault();installerSigPad(()=>{const l=$("#rpIsSet");if(l)l.replaceWith(document.createTextNode("✓ נשמרה"))})}
+  });
+  const collect=key=>[...form.querySelectorAll(`.rrow[data-sec="${key}"]`)].map(r=>{const okB=r.querySelector('[data-ok="1"]'),bad=r.querySelector('[data-ok="0"]');
+    const ok=!okB.classList.contains("ghost")?true:!bad.classList.contains("ghost")?false:null;const detail=r.querySelector('[data-r="detail"]').value.trim();return detail||ok!=null?{detail,ok}:null});
+  const body=()=>({no:$("#rpNo").value.trim(),date:$("#rpDate").value,client:$("#rpC").value.trim(),phone:$("#rpP").value.trim(),address:$("#rpA").value.trim(),
+    visit:[...form.querySelectorAll("[data-visit]:checked")].map(x=>x.dataset.visit),alarm:collect("alarm"),cams:collect("cams"),
+    result:Number((form.querySelector('[name="rpRes"]:checked')||{}).value||0),notes:[0,1,2].map(i=>$("#rpN"+i).value.trim()),next:$("#rpNext").value,
+    installer_sig:$("#rpIs").checked,client_sig:$("#rpCs").checked});
+  const call=async a=>{const res=await sb.functions.invoke("issue",{body:{action:a,job_id:j.id,report:body()}});let r=res.data;if(res.error&&res.error.context&&res.error.context.json){try{r=await res.error.context.json()}catch(x){}}return r||{ok:false,message:"אין תשובה מהשרת"}};
+  $("#rpPrev").onclick=async()=>{const w=window.open("","_blank");toast("מכין תצוגה מקדימה…");const r=await call("report_preview");
+    if(!r.ok||!r.pdf){if(w)w.close();toast(r.message||"התצוגה לא נפתחה");return}openPdf64(r.pdf,w)};
+  form.onsubmit=async e=>{e.preventDefault();if(!$("#rpNo").value.trim()){toast("חסר מספר בדיקה");return}
+    const btn=form.querySelector("[type=submit]");btn.disabled=true;btn.textContent="שומר…";const r=await call("report_save");
+    if(!r.ok){btn.disabled=false;btn.textContent="💾 שמירת הדוח";toast(r.message||"לא נשמר");return}
+    j.report_no=r.no;j.report_path=r.path;j.report_data=body();toast(`דוח ${r.no} נשמר`+(r.installer_sig?"":" – בלי חתימה שלך"));el.hidden=true;render()};
+}
+async function shareReportPdf(j){
+  if(!j.report_path)return;const {data:u}=await sb.storage.from("jobfiles").createSignedUrl(j.report_path,600);if(!u){toast("הקובץ לא נמצא");return}
+  const b=await fetch(u.signedUrl).then(r=>r.blob());const f=new File([b],`דוח בדיקה ${j.report_no||""} - ${j.client||""} - אהרן מערכות.pdf`.replace(/[\\/:*?"<>|]+/g," "),{type:"application/pdf"});
+  const text=`דוח בדיקה ואישור תקינות ${j.report_no||""} – ${j.client||""}\nאהרן מערכות · 055-975-9822`;
+  if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],text})}catch(e){}}
+  else{const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=f.name;document.body.appendChild(a);a.click();a.remove();toast("הדוח ירד למחשב")}
+}
+document.addEventListener("click",e=>{const r=e.target.closest("[data-report]");if(r){e.preventDefault();const j=(data.jobs||[]).find(x=>x.id===r.dataset.report);if(j)reportSheet(j)}
+  const s=e.target.closest("[data-repshare]");if(s){e.preventDefault();const j=(data.jobs||[]).find(x=>x.id===s.dataset.repshare);if(j)shareReportPdf(j)}});
 function wrap(g,text,maxW){const out=[];for(const para of String(text).split("\n")){let line="";for(const w of para.split(/\s+/)){const t=line?line+" "+w:w;if(g.measureText(t).width>maxW&&line){out.push(line);line=w}else line=t}out.push(line)}return out}
 async function shareReport(j){
   toast("מכין את האישור…");
