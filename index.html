@@ -305,6 +305,12 @@ const TAX=["ביטוח לאומי","מס הכנסה",'מע"מ'];
 const DEBT_CATS=["ספק","ביטוח לאומי","מס הכנסה",'מע"מ',"אשראי/הלוואה","אחר"];
 const EXP_CATS=["ציוד","כלי עבודה","דלק ורכב","ביטוח לאומי","מס הכנסה",'מע"מ',"תקשורת","רואת חשבון","עובדים","אחר"];
 const KINDS=["","התקנה","תיקון","קריאת שירות","תחזוקה","אחר"];
+const JF=[["client","שם לקוח","text"],["phone","טלפון","tel"],["place","עסק / מיקום","text"],["address","כתובת","text"],["kind","סוג","select",KINDS],["date","תאריך","date"],["time","שעה","time"],
+  ["price","מחיר גבייה ₪ (לפני מע״מ)","num"],["cost","עלויות ₪","num"],["paid","שולם?","select",["לא ידוע","כן","לא","חלקי"]],["paid_amount","כמה שולם ₪","num"],["notes","הערות","textarea"]];
+const JF_NUM=["price","cost","paid_amount"];
+let jobFlush=null;
+addEventListener("pagehide",()=>{if(jobFlush)jobFlush()});
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden"&&jobFlush)jobFlush()});
 const SCHEMA={
  jobs:{title:"עבודה",fields:[
   ["client","שם לקוח","text",1],["phone","טלפון","tel",0,null,"half"],["place","עסק / מיקום","text",0,null,"half"],["address","כתובת","text"],
@@ -1322,13 +1328,20 @@ async function jobView(m){
   const opt=d=>`<option value="${esc(d.id)}" ${d.id===j.morning_doc_id?"selected":""}>${esc(d.type_name)} ${esc(d.number)} · ${esc(d.client||"")} · ${ils(d.amount)} · ${heDate(d.doc_date)}</option>`;
   const o=owedOf(j);
   const ph=String(j.phone||"").replace(/[^\d+]/g,""),wph=waPhone(j.phone),hasNvr=["nvr_model","nvr_serial","nvr_user","nvr_pass","nvr_code","nvr_ip","nvr_qr"].some(k=>j[k]);
-  m.innerHTML=`<div class="bar"><button class="btn ghost" type="button" id="backJob">→ עבודות</button><h2 style="flex:1;min-width:0;overflow-wrap:anywhere">${j.client?`<a href="#" data-client="${esc(canon(j.client))}">${esc(j.client)}</a>`:"עבודה"}</h2><button class="btn ghost" type="button" data-edit="jobs" data-id="${esc(j.id)}">✏️ פרטים</button></div>
+  m.innerHTML=`<div class="bar"><button class="btn ghost" type="button" id="backJob">→ עבודות</button><h2 style="flex:1;min-width:0;overflow-wrap:anywhere">${j.client?`<a href="#" data-client="${esc(canon(j.client))}">${esc(j.client)}</a>`:"עבודה"}</h2><button class="btn ghost" type="button" id="jSave">💾 שמירה</button></div>
    <div class="jhero">
     <div class="jchips">${j.date?`<span class="jchip">📅 ${heDate(j.date)}</span>`:""}${j.kind?`<span class="jchip">${esc(j.kind)}</span>`:""}${j.price?`<span class="jchip">💰 ${ils(j.price)}</span>`:""}${o>0?`<span class="pill bad">חייב ${ils(o)}</span>`:j.paid==="כן"?`<span class="pill good">שולם</span>`:""}</div>
     ${j.place||j.address?`<div class="jaddr">📍 ${esc([j.place,j.address].filter(Boolean).join(" · "))}</div>`:""}
     <div class="jacts">${ph?`<a class="btn ghost" href="tel:${esc(ph)}">📞 חיוג</a>`:""}${wph?`<a class="btn ghost" href="https://wa.me/${wph}" target="_blank" rel="noopener">💬 צ׳אט</a>`:""}${j.address?wazeBtn(j.address):""}</div>
    </div>
    <div class="jquick"><button class="btn" type="button" id="issueTop">${j.morning_doc_id?"✉️ שליחת חשבונית":"🧾 חשבונית"}</button><button class="btn ghost" type="button" id="issueTopW">🧾+🛡️ עם אחריות</button><label class="btn ghost" for="jPhotos">📷 תמונות</label></div>
+
+   <details class="jcard" ${j.client&&j.date&&j.price?"":"open"}><summary><h3>📋 פרטי העבודה</h3></summary>
+    <div class="pair">${JF.map(([k,l,t,opts])=>`<div class="f"${t==="textarea"||k==="client"||k==="address"?' style="grid-column:1/-1"':""}><label for="jf_${k}">${l}</label>${
+      t==="select"?`<select id="jf_${k}" data-jf="${k}">${opts.map(o=>`<option ${String(j[k]??"")===o?"selected":""}>${esc(o)}</option>`).join("")}</select>`
+      :t==="textarea"?`<textarea id="jf_${k}" data-jf="${k}" style="min-height:70px">${esc(j[k]??"")}</textarea>`
+      :`<input id="jf_${k}" data-jf="${k}" type="${t==="num"?"text":t}" ${t==="num"?'inputmode="decimal" dir="ltr"':t==="tel"?'dir="ltr"':""} autocomplete="off" name="x-jf-${k}" value="${esc(j[k]??"")}">`}</div>`).join("")}</div>
+   </details>
 
    <section class="jcard"><h3>📷 תמונות <small>${photos.length||""}</small></h3>
     <div class="thumbs strip" id="thumbs"><label class="add"><span>＋<br>הוספה</span><input type="file" accept="image/*" multiple id="jPhotos" hidden></label>${photos.map((p,i)=>`<button type="button" data-photo="${i}" aria-label="תמונה ${i+1}"><img alt="" data-path="${esc(p.path)}"></button>`).join("")}</div>
@@ -1365,8 +1378,9 @@ async function jobView(m){
    </section>
 
    <details class="jcard" ${hasNvr?"open":""}><summary><h3>📼 מערכת הקלטה (NVR / DVR)</h3></summary>
-   <div class="pair">${[["nvr_model","דגם"],["nvr_serial","מספר סידורי (S/N)"],["nvr_user","שם משתמש"],["nvr_pass","סיסמה"],["nvr_code","קוד מצלמות"],["nvr_ip","IP קבוע"],["nvr_qr","QR / P2P"]].map(([k,l])=>`<div class="f"><label for="j_${k}">${l}</label><input id="j_${k}" data-nvr="${k}" type="text" dir="ltr" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" ${k==="nvr_pass"||k==="nvr_code"?'class="secret"':""} value="${esc(j[k]||"")}"></div>`).join("")}</div>
-   <div class="note" style="font-size:12.5px;margin:0">נשמר אוטומטית. הסיסמה וקוד המצלמות מוסתרים – לחיצה מציגה אותם. הפרטים האלה לא נשלחים ללקוח.</div></details>`;
+   <div class="pair">${[["nvr_model","דגם"],["nvr_serial","מספר סידורי (S/N)"],["nvr_user","שם משתמש"],["nvr_pass","סיסמה"],["nvr_code","קוד מצלמות"],["nvr_ip","IP קבוע"],["nvr_qr","P2P – מספר סידורי (S/N)"]].map(([k,l])=>`<div class="f"><label for="j_${k}">${l}</label><input id="j_${k}" data-nvr="${k}" type="text" dir="ltr" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" ${k==="nvr_pass"||k==="nvr_code"?'class="secret"':""} value="${esc(j[k]||"")}"></div>`).join("")}</div>
+   <div class="note" style="font-size:12.5px;margin:0">ה-P2P מתמלא לבד מהמספר הסידורי. נשמר אוטומטית. הסיסמה וקוד המצלמות מוסתרים – לחיצה מציגה אותם. הפרטים האלה לא נשלחים ללקוח.</div></details>
+   <button class="btn ghost" type="button" data-edit="jobs" data-id="${esc(j.id)}" style="margin-top:10px;width:100%;opacity:.75">🗑️ מחיקת העבודה / שדות נוספים</button>`;
   // load images
   const urls=await signed([...photos.map(p=>p.path),j.signature_path].filter(Boolean));
   document.querySelectorAll("#thumbs img[data-path]").forEach(im=>{im.src=fileUrl[im.dataset.path]||""});
@@ -1383,7 +1397,21 @@ async function jobView(m){
   const jl=$("#jLater");if(jl)jl.onchange=()=>{save({bill_later:jl.checked});toast(jl.checked?"העבודה ממתינה לחשבונית מרוכזת":"בוטל")};
   document.querySelectorAll("[data-jfile]").forEach(b=>b.onclick=()=>openJobFile(b.dataset.jfile));
   $("#jPhotos").onchange=e=>addPhotos(j,[...e.target.files]);
-  document.querySelectorAll("[data-nvr]").forEach(i=>i.onchange=()=>save({[i.dataset.nvr]:i.value.trim()||null}));
+  // every field on the page saves while typing (short delay), on leaving the field, with 💾, and when leaving the page
+  const pend={};let tmr=null;const sb_=$("#jSave");
+  const mark=t=>{if(sb_)sb_.textContent=t};
+  const val=(k,v)=>{v=String(v??"").trim();if(JF_NUM.includes(k))return v===""?null:num(v.replace(/[^\d.\-]/g,""));return v||null};
+  const flush=async()=>{clearTimeout(tmr);tmr=null;const keys=Object.keys(pend);if(!keys.length){mark("✓ נשמר");return}
+    const patch={};keys.forEach(k=>{patch[k]=pend[k];delete pend[k]});mark("שומר…");await save(patch);mark("✓ נשמר");setTimeout(()=>mark("💾 שמירה"),2500)};
+  const queue=(k,v)=>{pend[k]=v;mark("שומר…");clearTimeout(tmr);tmr=setTimeout(flush,900)};
+  jobFlush=flush;
+  document.querySelectorAll("[data-jf]").forEach(i=>{const k=i.dataset.jf;i.oninput=i.onchange=()=>queue(k,val(k,i.value))});
+  document.querySelectorAll("[data-nvr]").forEach(i=>{const k=i.dataset.nvr;i.oninput=i.onchange=()=>{queue(k,i.value.trim()||null);
+    if(k==="nvr_serial"){const q=$("#j_nvr_qr");if(q&&(!q.value.trim()||q.dataset.auto)){q.value=i.value.trim();q.dataset.auto="1";queue("nvr_qr",q.value||null)}}
+    if(k==="nvr_qr")delete i.dataset.auto}});
+  $("#jSum").oninput=()=>{j.summary=$("#jSum").value;updWa();queue("summary",$("#jSum").value.trim())};
+  $("#jPay").oninput=()=>queue("pay_link",$("#jPay").value.trim()||null);
+  if(sb_)sb_.onclick=()=>flush();
   const updWa=()=>{const a=$("#waBtn");if(!a)return;const ph=waPhone(j.phone);a.href=(ph?`https://wa.me/${ph}`:"https://wa.me/")+"?text="+encodeURIComponent(waText(j))};
   updWa();
 }
@@ -2242,7 +2270,7 @@ document.addEventListener("click",async e=>{
   if(e.target.closest("#logout")){try{localStorage.removeItem(FID);localStorage.removeItem("aharon-app-data")}catch(x){}await sb.auth.signOut();return}
   if(e.target.closest("#faceToggle")){if(getFid()){try{localStorage.removeItem(FID)}catch(x){}toast("Face ID כובה")}else if(await canFaceId()){await enableFaceId()}else toast("המכשיר הזה לא תומך ב-Face ID");render();return}
   if(e.target.closest("#backProj")){curProject=null;selPt=null;render();return}
-  if(e.target.closest("#backJob")){curJob=null;if(backTo){tab="clients";curClient=backTo;backTo=null}render();return}
+  if(e.target.closest("#backJob")){if(jobFlush){const f=jobFlush;jobFlush=null;f()}curJob=null;if(backTo){tab="clients";curClient=backTo;backTo=null}render();return}
   const oj=e.target.closest("[data-open-job]");if(oj){deeper();backTo=(tab==="clients"&&curClient)?curClient:null;curJob=oj.dataset.openJob;tab="jobs";render();window.scrollTo(0,0);return}
   if(e.target.closest("#signBtn")){signaturePad(curJ());return}
   const ph=e.target.closest("[data-photo]");if(ph){const t=ph.dataset.ptable||"jobs";const o=t==="jobs"?curJ():t==="projects"?curP():data[t].find(x=>x.id===ph.dataset.pid);if(o)photoSheet(o,+ph.dataset.photo,t);return}
