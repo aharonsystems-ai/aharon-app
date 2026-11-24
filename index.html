@@ -1349,7 +1349,7 @@ async function jobView(m){
    <section class="jcard"><h3>🧾 חשבונית ואחריות</h3>
     ${doc?`<div class="drow jdoc"><div class="dm"><b>${esc(doc.type_name)} ${esc(doc.number)}</b><span>${heDate(doc.doc_date)}${doc.status===0&&doc.type!==400?' · <span style="color:var(--bad)">פתוחה</span>':' · <span style="color:var(--good)">סגורה</span>'}</span></div><div class="dr"><b>${ils(doc.amount)}</b>${doc.url?`<a class="btn ghost" href="${esc(doc.url)}" target="_blank" rel="noopener">📄 צפייה</a>`:""}</div></div>`:""}
     <div class="pair"><div class="f"><label for="jWno">מס׳ תעודת אחריות</label><input id="jWno" type="text" inputmode="numeric" dir="ltr" placeholder="מהתעודה המודפסת" value="${esc(j.warranty_no||"")}"></div>
-     <div class="f"><label for="jMail">מייל הלקוח</label><input id="jMail" type="email" dir="ltr" autocapitalize="off" value="${esc(j.client_email||clientMail(j)||"")}"></div></div>
+     <div class="f"><label for="jMail">מייל הלקוח</label><input id="jMail" type="email" dir="ltr" autocapitalize="off" autocomplete="off" name="x-jmail" value="${esc(j.client_email||clientMail(j)||"")}"></div></div>
     ${j.mail_sent_at?`<div class="note" style="margin:0">✉️ נשלח ל-${esc(j.mail_to||"")} · ${new Date(j.mail_sent_at).toLocaleString("he-IL",{day:"numeric",month:"numeric",year:"2-digit",hour:"2-digit",minute:"2-digit"})}</div>`:""}
     ${j.warranty_path||j.invoice_path?`<div class="bar" style="margin:0">${j.warranty_path?`<button class="btn ghost" type="button" data-jfile="${esc(j.warranty_path)}" style="flex:1">🛡️ התעודה</button>`:""}${j.invoice_path?`<button class="btn ghost" type="button" data-jfile="${esc(j.invoice_path)}" style="flex:1">📄 החשבונית</button>`:""}</div>`:""}
     ${j.morning_doc_id?"":`<label class="vchk" style="margin:0"><input type="checkbox" id="jLater" ${j.bill_later?"checked":""}> ממתין לחשבונית מרוכזת (חשבונית אחת על כמה עבודות, מכרטיס הלקוח)</label>`}
@@ -1408,9 +1408,15 @@ async function openJobFile(path){
   if(error||!s){if(w)w.close();toast("הקובץ לא נפתח");return}
   if(w)w.location=s.signedUrl;else location.href=s.signedUrl;
 }
-function openPdf64(b64,w){
+async function openPdf64(b64,w){
   const bin=atob(b64),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
-  const url=URL.createObjectURL(new Blob([u],{type:"application/pdf"}));if(w)w.location=url;else window.open(url,"_blank");
+  const blob=new Blob([u],{type:"application/pdf"});
+  // on the phone (app from the home screen) a blob: link opens blank in Safari – serve the file from storage instead
+  const standalone=navigator.standalone||matchMedia("(display-mode: standalone)").matches||/iPhone|iPad|Android/i.test(navigator.userAgent);
+  if(standalone){try{const path="preview/"+Date.now()+"-"+Math.random().toString(36).slice(2,8)+".pdf";
+    const up=await sb.storage.from("jobfiles").upload(path,blob,{contentType:"application/pdf",upsert:true});
+    if(!up.error){const {data:s}=await sb.storage.from("jobfiles").createSignedUrl(path,1800);if(s&&s.signedUrl){if(w)w.location=s.signedUrl;else location.href=s.signedUrl;return}}}catch(x){}}
+  const url=URL.createObjectURL(blob);if(w)w.location=url;else window.open(url,"_blank");
 }
 async function issueSheet(j,withW){
   const el=$("#sheet");const linked=data.morning_docs.find(d=>d.id===j.morning_doc_id);
@@ -1440,10 +1446,10 @@ async function issueSheet(j,withW){
     <div class="sum" id="iTot" style="padding:6px 2px"></div>
    </div>
    <h4 class="sec">הלקוח</h4>
-   <div class="pair"><div class="f"><label for="iClient">שם (כמו ב-Morning)</label><input id="iClient" type="text" value="${esc(linked?.client||j.client||"")}"></div>
-    <div class="f"><label for="iMail">מייל</label><input id="iMail" type="email" dir="ltr" autocapitalize="off" value="${esc(clientMail(j))}"></div></div>
-   <div class="pair"><div class="f"><label for="iPhone">טלפון</label><input id="iPhone" type="tel" dir="ltr" value="${esc(j.phone||"")}"></div>
-    <div class="f"><label for="iAddr">כתובת ההתקנה</label><input id="iAddr" type="text" value="${esc(j.address||j.place||"")}"></div></div>
+   <div class="pair"><div class="f"><label for="iClient">שם (כמו ב-Morning)</label><input id="iClient" type="text" autocomplete="off" name="x-iclient" value="${esc(linked?.client||j.client||"")}"></div>
+    <div class="f"><label for="iMail">מייל</label><input id="iMail" type="email" dir="ltr" autocapitalize="off" autocomplete="off" name="x-imail" value="${esc(clientMail(j))}"></div></div>
+   <div class="pair"><div class="f"><label for="iPhone">טלפון</label><input id="iPhone" type="tel" dir="ltr" autocomplete="off" name="x-iphone" value="${esc(j.phone||"")}"></div>
+    <div class="f"><label for="iAddr">כתובת ההתקנה</label><input id="iAddr" type="text" autocomplete="off" name="x-iaddr" value="${esc(j.address||j.place||"")}"></div></div>
    <label class="vchk" style="margin-top:10px;font-size:16px"><input type="checkbox" id="iWon" ${wOn?"checked":""}> לצרף תעודת אחריות</label>
    <div id="iW">
    <div class="note" style="margin:0">נתת ללקוח תעודה מודפסת? רשום כאן את המספר שלה. אחרת המספר הבא בסדרה הדיגיטלית (300001 ואילך) ממולא לבד.</div>
@@ -1486,7 +1492,7 @@ async function issueSheet(j,withW){
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(b.email)){$("#iMail").focus();msg("צריך מייל של הלקוח");return}
     if(mode()==="new"&&!b.lines.some(l=>l.description&&l.price)){msg("צריך שורה עם תיאור ומחיר");return}
     if(mode()==="warranty"&&!b.warranty.no){$("#iWno").focus();msg("צריך מספר תעודה");return}
-    if(!go.dataset.sure){go.dataset.sure="1";go.textContent=mode()==="new"?"ללחוץ שוב: מפיק חשבונית אמיתית ב-Morning ושולח ל-"+b.email:"ללחוץ שוב לשליחה ל-"+b.email;return}
+    if(!go.dataset.sure){go.dataset.sure="1";go.textContent=mode()==="new"?"ללחוץ שוב: מפיק חשבונית אמיתית ב-Morning, ו-Morning שולח אותה ל-"+b.email:"ללחוץ שוב לשליחה ל-"+b.email;return}
     go.disabled=true;go.textContent=mode()==="new"?"מפיק ושולח…":"שולח…";msg("");
     const r=await call(b);go.disabled=false;
     if(!r.ok){msg(r.message||"נכשל");go.dataset.sure="";sync();await loadAll();return}
@@ -1515,7 +1521,7 @@ function multiIssueSheet(cname){
     <div class="f"><label for="mDate">תאריך</label><input id="mDate" type="date" value="${esc(today())}"></div></div>
    <div class="f" id="mPayF" hidden><label for="mPay">איך שילם</label><select id="mPay">${PAY_TYPES.map(([v,t])=>`<option value="${v}">${t}</option>`).join("")}</select></div>
    <div class="pair"><div class="f"><label for="mClient">שם (כמו ב-Morning)</label><input id="mClient" type="text" value="${esc(c.name)}"></div>
-    <div class="f"><label for="mMail">מייל</label><input id="mMail" type="email" dir="ltr" autocapitalize="off" value="${esc(email)}"></div></div>
+    <div class="f"><label for="mMail">מייל</label><input id="mMail" type="email" dir="ltr" autocapitalize="off" autocomplete="off" name="x-mmail" value="${esc(email)}"></div></div>
    <label class="vchk" style="margin:6px 0"><input type="checkbox" id="mW" checked> לצרף תעודות אחריות שכבר הופקו לעבודות האלה</label>
    <div class="f"><label for="mTxt">טקסט במייל</label><textarea id="mTxt" style="min-height:60px">מצורפת חשבונית מרוכזת על העבודות האחרונות.</textarea></div>
    <div class="actions"><button class="btn ghost" type="button" id="mPrev">👁️ תצוגה מקדימה</button><button class="btn" type="button" id="mGo">🧾 הפקה ב-Morning ושליחה</button><button class="btn ghost" type="button" data-close>סגירה</button></div>
@@ -1543,7 +1549,7 @@ function multiIssueSheet(cname){
     if(!b.job_ids.length){msg("צריך לסמן לפחות עבודה אחת");return}
     if(!b.lines.every(l=>l.description&&l.price)){msg("בכל עבודה מסומנת צריך תיאור ומחיר");return}
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(b.email)){$("#mMail").focus();msg("צריך מייל של הלקוח");return}
-    if(!go.dataset.sure){go.dataset.sure="1";go.textContent="ללחוץ שוב: מפיק חשבונית אמיתית ב-Morning ושולח ל-"+b.email;return}
+    if(!go.dataset.sure){go.dataset.sure="1";go.textContent="ללחוץ שוב: מפיק חשבונית אמיתית ב-Morning, ו-Morning שולח אותה ל-"+b.email;return}
     go.disabled=true;go.textContent="מפיק ושולח…";msg("");
     const r=await call(b);go.disabled=false;
     if(!r.ok){msg(r.message||"נכשל");go.dataset.sure="";tot();await loadAll();return}
