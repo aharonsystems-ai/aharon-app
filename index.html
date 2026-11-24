@@ -60,6 +60,10 @@ h2{font:700 18px var(--display);margin:0}
 input[type=search]{flex:1;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit}
 .btn{border:0;border-radius:10px;padding:10px 14px;font:600 15px var(--body);cursor:pointer;background:var(--accent);color:var(--accent-ink)}
 .btn.ghost{background:var(--chip);color:var(--fg)}
+.ocl{border-top:1px solid var(--line,#e3e6ee)}.ocl>summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:12px 14px}
+.ocl>summary::-webkit-details-marker{display:none}.ocl .ot{font-weight:800;font-size:16px}.ocl .on{font-size:17px;text-align:left;direction:ltr}.ocl .os{grid-column:1/-1;font-size:12.5px;color:var(--muted,#667)}
+.ocl[open]>summary{background:var(--soft,rgba(120,140,200,.08))}.oit{padding:6px 10px 0}.otag{display:inline-block;font-size:12px;font-weight:700;border-radius:8px;padding:2px 8px;margin:0 4px 2px}
+.otag.inv{background:#e7efff;color:#1c46ad}.otag.cash{background:#fff3d6;color:#8a5a00}.osplit{display:flex;flex-wrap:wrap;gap:6px 16px;justify-content:space-between;padding:6px 14px 10px;font-size:13px;color:var(--muted,#667)}
 .grp{display:flex;justify-content:space-between;gap:8px;padding:10px 14px 6px;font-weight:700;font-size:14px;color:var(--muted,#667);border-top:1px solid var(--line,#e3e6ee)}
 .btn.waze{display:block;text-align:center;text-decoration:none;background:#33ccff;color:#05222e;margin:8px 0}
 .btn.danger{background:transparent;color:var(--bad);border:1.5px solid var(--bad)}
@@ -372,15 +376,34 @@ function invMatches(){
     if(d)take(j,d)});
   _im={key,m};return m}
 const owedJobs=()=>{const m=invMatches();return data.jobs.filter(j=>owedOf(j)>0&&!m.has(j.id))};
-// "חייבים לי" – one calculation for every screen. The total is the sheet's "חייבים לי" rows only (owner's choice, 22.11.2026).
-// Open Morning invoices and unpaid jobs with no invoice are returned too, for information – they are not added to the total.
+// "חייבים לי" – one calculation for every screen (owner's request, 24.11.2026): per client, from every place –
+// open Morning invoices (invoice issued, waiting for payment), the sheet's "חייבים לי" rows and unpaid jobs with no invoice.
+// A sheet row with the same client and amount as an open invoice is the same debt: counted once, as the invoice.
 function owedParts(){
-  const inv=openInvoices(),nm=v=>String(v||"").trim().replace(/\s+/g," ");
-  const like=(a,b)=>{a=nm(a);b=nm(b);return !!(a&&b&&(a===b||a.includes(b)||b.includes(a)))};
+  const inv=openInvoices();
   const all=data.debts.filter(d=>isOwed(d)&&d.paid!=="שולם");
-  const dup=new Set(),sheet=all,jobs=owedJobs(),amt=a=>a.reduce((t,d)=>t+num(d.amount),0);
+  const dup=new Set();
+  inv.forEach(x=>{const s=all.find(d=>!dup.has(d.id)&&canon(d.name)===canon(x.client)&&Math.abs(num(d.amount)-num(x.amount))<1);if(s)dup.add(s.id)});
+  const sheet=all.filter(d=>!dup.has(d.id)),jobs=owedJobs(),amt=a=>a.reduce((t,d)=>t+num(d.amount),0);
   const sInv=amt(inv),sSheet=amt(sheet),sJobs=jobs.reduce((t,j)=>t+owedOf(j),0);
-  return {inv,sheet,dup,jobs,sInv,sSheet,sJobs,total:sSheet}}
+  const g=new Map(),add=(n,it)=>{const c=canon(n)||"בלי שם";if(!g.has(c))g.set(c,{name:c,items:[],sum:0});const o=g.get(c);o.items.push(it);o.sum+=it.amount};
+  inv.forEach(x=>add(x.client,{kind:"inv",amount:num(x.amount),x}));
+  sheet.forEach(x=>add(x.name,{kind:"sheet",amount:num(x.amount),x}));
+  jobs.forEach(x=>add(x.client,{kind:"job",amount:owedOf(x),x}));
+  const clients=[...g.values()].sort((a,b)=>b.sum-a.sum);
+  return {inv,sheet,dup,jobs,sInv,sSheet,sJobs,clients,total:sInv+sSheet+sJobs}}
+// one client in "חייבים לי": the total, and on tap – every place the money comes from, with its status
+function owedClient(c){
+  const tag=it=>it.kind==="inv"?`<span class="otag inv">🧾 יצא ${esc(it.x.type===300?"חשבון עסקה":"חשבונית")} ${esc(it.x.number||"")} · ממתין לתשלום</span>`
+    :it.kind==="job"?`<span class="otag cash">💵 בלי חשבונית · עבודה (לפני מע״מ)</span>`
+    :`<span class="otag cash">💵 בלי חשבונית · חוב מהגיליון</span>`;
+  const nInv=c.items.filter(i=>i.kind==="inv").length,nCash=c.items.length-nInv;
+  const sub=c.items.length>1?`${c.items.length} מקומות · `+[nInv?`${nInv} עם חשבונית`:"",nCash?`${nCash} בלי חשבונית`:""].filter(Boolean).join(" · ")
+    :nInv?"יצאה חשבונית · ממתין לתשלום":"בלי חשבונית";
+  return `<details class="ocl"><summary><span class="ot">${esc(c.name)}</span><b class="on">${ils(c.sum)}</b><span class="os">${sub} ▾</span></summary>
+   ${c.items.map(it=>`<div class="oit">${tag(it)}${it.kind==="inv"?docRow(it.x):it.kind==="job"?row("jobs",it.x):row("debts",it.x)}</div>`).join("")}
+   ${nCash?`<div class="note" style="margin:6px 0 2px;font-size:12.5px">חוב בלי חשבונית: כשהכסף מגיע – מפיקים חשבונית מס/קבלה מהעבודה, או מסמנים "שולם"${c.items.some(i=>i.kind==="sheet")?" (חוב מהגיליון נסגר בגיליון)":""}.</div>`:""}
+  </details>`}
 // "יתרות" – account balances from the עו"ש sheet, kept by the sync in app_settings
 function balances(){const r=(data.app_settings||[]).find(s=>s.key==="balances");if(!r)return null;try{return JSON.parse(r.value)}catch(e){return null}}
 const openQuotes=()=>data.morning_docs.filter(d=>d.type===10&&d.status===0);
@@ -621,7 +644,7 @@ function home(){
   </section>
   ${quotes.length?`<button class="tile ${dueQ.length?'warn':''}" data-go="quotes" data-f="${dueQ.length?'due':'active'}"><span>הצעות מחיר · לחזור ללקוחות</span><b>${dueQ.length?dueQ.length+" להיום":"אין להיום"}</b><span>${quotes.length} פתוחות · ${ils(quotes.reduce((a,d)=>a+num(d.amount),0))} · לחץ לרשימה</span></button>`:""}
   <div class="tiles">
-   <button class="tile ${owedSum?'good':''}" data-go="debts" data-f="owed"><span>חייבים לי</span><b>${ils(owedSum)}</b><span>${P.sheet.length} מהגיליון${P.inv.length?` · ${ils(P.sInv)} פתוח במורנינג (לידיעה)`:""}</span></button>
+   <button class="tile ${owedSum?'good':''}" data-go="debts" data-f="owed"><span>חייבים לי</span><b>${ils(owedSum)}</b><span>${P.clients.length} לקוחות${P.inv.length?` · ${ils(P.sInv)} בחשבוניות`:""}</span></button>
    <button class="tile ${debtSum?'warn':''}" data-go="debts" data-f="open"><span>אני חייב</span><b>${ils(debtSum)}</b><span>${open.length} חובות פתוחים</span></button>
    <button class="tile ${low.length?'bad':'good'}" data-go="stock" data-f="low"><span>חסר במלאי</span><b>${low.length}</b><span>${data.stock.length} פריטים</span></button>
    <button class="tile" data-go="clients"><span>לקוחות</span><b>${clientsAll().length}</b><span>עבודות, תשלומים וחובות לכל לקוח</span></button>
@@ -925,11 +948,10 @@ function listBody(k){
   if(k==="jobs"){const inv=(filt.jobs==="owed")?openInvoices():[];total=`<div class="sum"><span>${items.length} עבודות · חייבים</span><span>${ils(items.reduce((a,j)=>a+owedOf(j),0))}</span></div>`;
     if(inv.length)total=`<div class="sum"><span>חשבוניות פתוחות ב־Morning</span><span>${ils(inv.reduce((a,d)=>a+num(d.amount),0))}</span></div>${inv.map(docRow).join("")}`+total}
   if(k==="debts"){const f=filt.debts||"open",opn=items.filter(d=>d.paid!=="שולם");
-    if(f==="owed"){const P=owedParts(),mine=items.filter(d=>!P.dup.has(d.id));
-      total=`<div class="sum"><span>סה״כ חייבים לי</span><span>${ils(P.total)}</span></div>`+
-       (mine.length?`<div class="grp"><span>מהגיליון (${mine.length})</span><span>${ils(P.sSheet)}</span></div>`:"")+mine.map(x=>row(k,x)).join("")+
-       (P.inv.length?`<div class="grp"><span>לידיעה · חשבוניות פתוחות ב־Morning (${P.inv.length}) – לא בסה״כ</span><span>${ils(P.sInv)}</span></div>${P.inv.map(docRow).join("")}`:"")+
-       (P.jobs.length?`<div class="grp"><span>לידיעה · עבודות שלא שולמו, בלי חשבונית (${P.jobs.length}) – לא בסה״כ</span><span>${ils(P.sJobs)}</span></div>${P.jobs.map(j=>row("jobs",j)).join("")}`:"");
+    if(f==="owed"){const P=owedParts();
+      total=`<div class="sum"><span>סה״כ חייבים לי · ${P.clients.length} לקוחות</span><span>${ils(P.total)}</span></div>`+
+       `<div class="osplit"><span>🧾 עם חשבונית, ממתין לתשלום <b>${ils(P.sInv)}</b></span><span>💵 בלי חשבונית <b>${ils(P.sSheet+P.sJobs)}</b></span></div>`+
+       (P.clients.length?P.clients.map(owedClient).join(""):`<div class="empty">אף אחד לא חייב לך כרגע.</div>`);
       return `<div class="list">${total}</div>${syncNote()}`}
     total=`<div class="sum"><span>סה״כ ${f==="all"||f==="paid"?"":"פתוח"}</span><span>${ils(opn.filter(d=>f!=="all"||!isOwed(d)).reduce((a,d)=>a+num(d.amount),0))}</span></div>`}
   if(k==="expenses"){total=`<div class="sum"><span>${items.length} הוצאות</span><span>${ils(items.reduce((a,x)=>a+num(x.amount),0))}</span></div>`;
@@ -1031,7 +1053,7 @@ function clientsAll(){
 function clientMoney(c){
   const P=owedParts(),mine=n=>canon(n)===c.name;
   const inv=P.inv.filter(d=>mine(d.client)),jobs=P.jobs.filter(j=>mine(j.client)),sheet=P.sheet.filter(d=>mine(d.name));
-  const owed=sheet.reduce((a,d)=>a+num(d.amount),0); // sheet only; inv/jobs are shown for information
+  const owed=sheet.filter(d=>!P.dup.has(d.id)).reduce((a,d)=>a+num(d.amount),0)+inv.reduce((a,d)=>a+num(d.amount),0)+jobs.reduce((a,j)=>a+owedOf(j),0);
   const charged=c.jobs.reduce((a,j)=>a+num(j.price),0);
   const receipts=c.docs.filter(d=>d.type===320||d.type===400);
   const paidDocs=receipts.reduce((a,d)=>a+num(d.amount),0);
