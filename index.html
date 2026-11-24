@@ -63,6 +63,7 @@ input[type=search]{flex:1;min-width:0;padding:10px 12px;border-radius:10px;borde
 .ocl{border-top:1px solid var(--line,#e3e6ee)}.ocl>summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:12px 14px}
 .ocl>summary::-webkit-details-marker{display:none}.ocl .ot{font-weight:800;font-size:16px}.ocl .on{font-size:17px;text-align:left;direction:ltr}.ocl .os{grid-column:1/-1;font-size:12.5px;color:var(--muted,#667)}
 .ocl[open]>summary{background:var(--soft,rgba(120,140,200,.08))}.oit{padding:6px 10px 0}.otag{display:inline-block;font-size:12px;font-weight:700;border-radius:8px;padding:2px 8px;margin:0 4px 2px}
+.oacts{display:flex;gap:6px;flex-wrap:wrap;padding:4px 4px 8px}.oacts .btn{flex:1;padding:10px 8px;font-size:14px}
 .otag.inv{background:#e7efff;color:#1c46ad}.otag.cash{background:#fff3d6;color:#8a5a00}.osplit{display:flex;flex-wrap:wrap;gap:6px 16px;justify-content:space-between;padding:6px 14px 10px;font-size:13px;color:var(--muted,#667)}
 .grp{display:flex;justify-content:space-between;gap:8px;padding:10px 14px 6px;font-weight:700;font-size:14px;color:var(--muted,#667);border-top:1px solid var(--line,#e3e6ee)}
 .btn.waze{display:block;text-align:center;text-decoration:none;background:#33ccff;color:#05222e;margin:8px 0}
@@ -356,7 +357,7 @@ function toast(t){const el=$("#toast");el.textContent=t;el.hidden=false;clearTim
 const jobDone=j=>j.paid==="כן"&&(!j.date||j.date<=today());
 const warrantyEnd=j=>{if(!j.date)return null;const d=new Date(j.date+"T12:00:00Z");d.setUTCFullYear(d.getUTCFullYear()+1);return d.toISOString().slice(0,10)};
 const warrantyOf=j=>{const e=warrantyEnd(j);if(!e||j.date>today())return "";return e>=today()?"on":"off"};
-function owedOf(j){if(j.paid==="לא")return Math.max(0,num(j.price)-num(j.paid_amount));if(j.paid==="חלקי")return Math.max(0,num(j.price)-num(j.paid_amount));return 0}
+function owedOf(j){if((!j.paid||j.paid==="לא ידוע")&&!j.morning_doc_id)return Math.max(0,num(j.price));if(j.paid==="לא")return Math.max(0,num(j.price)-num(j.paid_amount));if(j.paid==="חלקי")return Math.max(0,num(j.price)-num(j.paid_amount));return 0}
 function profitOf(j){if(j.profit!==null&&j.profit!==undefined)return num(j.profit);if(j.cost!==null&&j.cost!==undefined)return num(j.price)-num(j.cost);return 0}
 const openInvoices=()=>data.morning_docs.filter(d=>(d.type===300||d.type===305)&&d.status===0);
 // עבודה שיש לה חשבונית פתוחה ב-Morning – לא נספרת פעמיים.
@@ -401,7 +402,9 @@ function owedClient(c){
   const sub=c.items.length>1?`${c.items.length} מקומות · `+[nInv?`${nInv} עם חשבונית`:"",nCash?`${nCash} בלי חשבונית`:""].filter(Boolean).join(" · ")
     :nInv?"יצאה חשבונית · ממתין לתשלום":"בלי חשבונית";
   return `<details class="ocl"><summary><span class="ot">${esc(c.name)}</span><b class="on">${ils(c.sum)}</b><span class="os">${sub} ▾</span></summary>
-   ${c.items.map(it=>`<div class="oit">${tag(it)}${it.kind==="inv"?docRow(it.x):it.kind==="job"?row("jobs",it.x):row("debts",it.x)}</div>`).join("")}
+   ${c.items.map(it=>`<div class="oit">${tag(it)}${it.kind==="inv"?docRow(it.x):it.kind==="job"?row("jobs",it.x):row("debts",it.x)}${
+     it.kind==="inv"?`<div class="oacts"><button class="btn" type="button" data-rcpt="${esc(it.x.id)}">🧾 הפקת קבלה – התקבל תשלום</button></div>`
+     :it.kind==="job"?`<div class="oacts"><button class="btn ghost" type="button" data-jpaid="${esc(it.x.id)}">💵 התקבל (בלי חשבונית)</button><button class="btn ghost" type="button" data-jinv="${esc(it.x.id)}">🧾 חשבונית מס/קבלה</button></div>`:""}</div>`).join("")}
    ${nCash?`<div class="note" style="margin:6px 0 2px;font-size:12.5px">חוב בלי חשבונית: כשהכסף מגיע – מפיקים חשבונית מס/קבלה מהעבודה, או מסמנים "שולם"${c.items.some(i=>i.kind==="sheet")?" (חוב מהגיליון נסגר בגיליון)":""}.</div>`:""}
   </details>`}
 // "יתרות" – account balances from the עו"ש sheet, kept by the sync in app_settings
@@ -1468,6 +1471,31 @@ async function openPdf64(b64,w){
     if(!up.error){const {data:s}=await sb.storage.from("jobfiles").createSignedUrl(path,1800);if(s&&s.signedUrl){if(w)w.location=s.signedUrl;else location.href=s.signedUrl;return}}}catch(x){}}
   const url=URL.createObjectURL(blob);if(w)w.location=url;else window.open(url,"_blank");
 }
+/* ---------- receipt for an open invoice (from "חייבים לי") ---------- */
+function receiptSheet(d){
+  const el=$("#sheet");
+  el.innerHTML=`<form id="edit" novalidate><h3>🧾 קבלה על ${esc(d.type_name)} ${esc(d.number)}</h3>
+   <div class="note">${esc(d.client||"")} · פתוח ${ils(d.amount)}. הקבלה מופקת ב-Morning, נקשרת לחשבונית וסוגרת אותה, ו-Morning שולח אותה ללקוח.</div>
+   <div class="pair"><div class="f"><label for="rAmt">סכום שהתקבל ₪</label><input id="rAmt" type="text" inputmode="decimal" dir="ltr" value="${esc(num(d.amount))}"></div>
+    <div class="f"><label for="rDate">תאריך</label><input id="rDate" type="date" value="${today()}"></div></div>
+   <div class="f"><label for="rPay">איך שילם</label><select id="rPay">${PAY_TYPES.map(([v,l])=>`<option value="${v}" ${v===1?"selected":""}>${esc(l)}</option>`).join("")}</select></div>
+   <div class="f"><label for="rMail">מייל הלקוח (לא חובה)</label><input id="rMail" type="email" dir="ltr" autocapitalize="off" autocomplete="off" name="x-rmail" value="${esc(d.client_email||"")}"></div>
+   <div class="note" id="rMsg" hidden></div>
+   <div class="bar"><button class="btn ghost" type="button" id="rPrev">👁️ תצוגה מקדימה</button><button class="btn" type="button" id="rGo" style="flex:1">🧾 הפקת קבלה</button><button class="btn ghost" type="button" data-close>סגירה</button></div></form>`;
+  el.hidden=false;
+  const body=a=>({action:a,id:d.id,amount:num(String($("#rAmt").value).replace(/[^\d.]/g,"")),open_amount:num(d.amount),date:$("#rDate").value,pay_type:Number($("#rPay").value),email:$("#rMail").value.trim()||undefined,client:d.client});
+  const msg=t=>{const n=$("#rMsg");n.hidden=!t;n.textContent=t||""};
+  const call=async b=>{const res=await sb.functions.invoke("issue",{body:b});let r=res.data;if(res.error&&res.error.context&&res.error.context.json){try{r=await res.error.context.json()}catch(x){}}return r||{ok:false,message:"אין תשובה מהשרת"}};
+  el.onclick=async e=>{
+    if(e.target===el||e.target.closest("[data-close]")){el.hidden=true;return}
+    if(e.target.closest("#rPrev")){const w=window.open("","_blank");msg("מכין…");const r=await call(body("receipt_preview"));if(!r.ok){if(w)w.close();msg(r.message||"התצוגה נכשלה");return}msg("");openPdf64(r.pdf,w);return}
+    const go=e.target.closest("#rGo");if(!go)return;const b=body("receipt");
+    if(!(b.amount>0)){msg("צריך סכום");return}
+    if(!go.dataset.sure){go.dataset.sure="1";go.textContent=`ללחוץ שוב: קבלה אמיתית על ${ils(b.amount)}`;return}
+    go.disabled=true;go.textContent="מפיק…";msg("");const r=await call(b);go.disabled=false;
+    if(!r.ok){go.dataset.sure="";go.textContent="🧾 הפקת קבלה";msg(r.message||"נכשל");return}
+    toast(r.message||"הופקה קבלה");el.hidden=true;await loadAll()};
+}
 async function issueSheet(j,withW){
   const el=$("#sheet");const linked=data.morning_docs.find(d=>d.id===j.morning_doc_id);
   let wNo=j.warranty_no||"";const wOn=withW===undefined?(!!wNo||!j.kind||j.kind==="התקנה"):!!withW;
@@ -1481,7 +1509,7 @@ async function issueSheet(j,withW){
      <button class="btn ghost" type="button" data-rmline aria-label="מחיקת שורה" style="padding:8px 0">✕</button></div>`;
   const mode0=linked?"linked":"new";
   el.innerHTML=`<form id="edit" novalidate><h3>${wOn?"🧾 חשבונית + תעודת אחריות":"🧾 חשבונית"}</h3>
-   <div class="note">המייל יוצא מהג'ימייל של אהרן מערכות, עם החשבונית ותעודת האחריות כקבצי PDF מצורפים. החשבונית מופקת ב-Morning ונשמרת שם כרגיל.</div>
+   <div class="note">החשבונית מופקת ב-Morning, ו-Morning שולח אותה ללקוח במייל. תעודת אחריות (אם יש) יוצאת במייל נפרד מהג'ימייל של אהרן מערכות.</div>
    <div class="f"><label for="iMode">מה לצרף</label><select id="iMode">
      <option value="new" ${mode0==="new"?"selected":""}>חשבונית חדשה ב-Morning + תעודת אחריות</option>
      ${linked?`<option value="linked" selected>${esc(linked.type_name)} ${esc(linked.number)} (כבר הופקה) + תעודת אחריות</option>`:""}
@@ -2293,6 +2321,12 @@ document.addEventListener("click",async e=>{
   if(e.target.closest("#faceToggle")){if(getFid()){try{localStorage.removeItem(FID)}catch(x){}toast("Face ID כובה")}else if(await canFaceId()){await enableFaceId()}else toast("המכשיר הזה לא תומך ב-Face ID");render();return}
   if(e.target.closest("#backProj")){curProject=null;selPt=null;render();return}
   if(e.target.closest("#backJob")){if(jobFlush){const f=jobFlush;jobFlush=null;f()}curJob=null;if(backTo){tab="clients";curClient=backTo;backTo=null}render();return}
+  const rc=e.target.closest("[data-rcpt]");if(rc){const d=data.morning_docs.find(x=>x.id===rc.dataset.rcpt);if(d)receiptSheet(d);return}
+  const jp=e.target.closest("[data-jpaid]");if(jp){const j=data.jobs.find(x=>x.id===jp.dataset.jpaid);if(!j)return;
+    if(!jp.dataset.sure){jp.dataset.sure="1";jp.textContent=`ללחוץ שוב: ${ils(owedOf(j))} התקבלו`;return}
+    jp.disabled=true;const {error}=await sb.from("jobs").update({paid:"כן",paid_amount:null,updated_at:new Date().toISOString()}).eq("id",j.id);
+    toast(error?"לא נשמר":"✔ סומן כשולם");await loadAll();return}
+  const ji=e.target.closest("[data-jinv]");if(ji){const j=data.jobs.find(x=>x.id===ji.dataset.jinv);if(j)issueSheet(j,false);return}
   const oj=e.target.closest("[data-open-job]");if(oj){deeper();backTo=(tab==="clients"&&curClient)?curClient:null;curJob=oj.dataset.openJob;tab="jobs";render();window.scrollTo(0,0);return}
   if(e.target.closest("#signBtn")){signaturePad(curJ());return}
   const ph=e.target.closest("[data-photo]");if(ph){const t=ph.dataset.ptable||"jobs";const o=t==="jobs"?curJ():t==="projects"?curP():data[t].find(x=>x.id===ph.dataset.pid);if(o)photoSheet(o,+ph.dataset.photo,t);return}

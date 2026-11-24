@@ -332,6 +332,39 @@ Deno.serve(async (req) => {
       return json({ok: true, id: created.id, number: created.number, url, total});
     }
 
+    // receipt (קבלה) for an open invoice / חשבון עסקה, from "חייבים לי": preview, or issue it in Morning (Morning mails it to the client)
+    if (action === "receipt_preview" || action === "receipt") {
+      const mtok = await morningToken(), id = String(b.id || "");
+      const d = await mcall(mtok, "GET", "/documents/" + encodeURIComponent(id));
+      const amount = round2(Number(b.amount) || 0);
+      if (!(amount > 0)) throw new Error("צריך סכום");
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(String(b.date || "")) ? String(b.date) : new Date().toISOString().slice(0, 10);
+      const pt = PAY[Number(b.pay_type)] ? Number(b.pay_type) : 1;
+      const c = d.client || {};
+      const body: any = {type: 400, date, lang: "he", currency: "ILS", vatType: 0, rounding: false, signed: true, attachment: true,
+        description: `תשלום עבור ${TYPES[d.type] || "מסמך"} ${d.number ?? ""}`.trim(),
+        client: c.id ? {id: c.id, name: c.name, emails: b.email ? [b.email] : (c.emails || []), add: false} : {name: c.name || b.client, emails: b.email ? [b.email] : [], add: false},
+        payment: [{type: pt, date, price: amount, currency: "ILS"}], linkedDocumentIds: [id]};
+      if (action === "receipt_preview") {
+        const p = await mcall(mtok, "POST", "/documents/preview", body);
+        const pdf = p.file || p.pdf || p.data || null;
+        if (!pdf) throw new Error("Morning לא החזיר תצוגה מקדימה");
+        return json({ok: true, pdf});
+      }
+      const created = await mcall(mtok, "POST", "/documents", body);
+      const now = new Date().toISOString();
+      const full = amount + 1 >= Number(b.open_amount || 0);
+      if (full) { try { await mcall(mtok, "POST", "/documents/" + encodeURIComponent(id) + "/close"); } catch (_) { /* Morning may close it by itself */ }
+        await sb.from("morning_docs").update({status: 1, status_name: "סגור", synced_at: now}).eq("id", id); }
+      await sb.from("morning_docs").upsert({id: created.id, number: String(created.number ?? ""), type: 400, type_name: TYPES[400], status: 1, status_name: "סגור",
+        doc_date: date, client: c.name || b.client || null, description: body.description, amount, currency: "ILS",
+        url: created.url?.he || created.url?.origin || null, client_email: (body.client.emails || [])[0] || null, synced_at: now});
+      // a job linked to this invoice is paid now
+      await sb.from("jobs").update({paid: full ? "כן" : "חלקי", paid_amount: full ? null : amount, updated_at: now}).eq("morning_doc_id", id);
+      const to = (body.client.emails || [])[0];
+      return json({ok: true, number: created.number, message: `הופקה קבלה ${created.number ?? ""}${to ? " – Morning שולח אותה ל-" + to : ""}`});
+    }
+
     // next free digital check-report number (the printed pads are 200001–200050)
     if (action === "report_next") {
       const {data} = await sb.from("jobs").select("report_no").not("report_no", "is", null);
