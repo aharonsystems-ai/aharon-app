@@ -970,7 +970,8 @@ const heMonth=ym=>{const [y,m]=String(ym).split("-");return HE_M[Number(m)-1]?HE
 const syncNote=()=>`<div class="note" style="margin-top:8px">"חייבים לי", הוצאות קבועות ועלויות פרויקטים מתעדכנים לבד מהגיליונות פעם בשעה, ושינוי סכום שלהם עושים בגיליון. חובות ("אני חייב") מנהלים כאן באפליקציה.</div>`;
 function row(k,x){
   let t="",s="",n="",p="";
-  if(k==="jobs"){const o=owedOf(x);t=x.client||"ללא שם";s=[x.kind,x.place,x.work,x.date?heDate(x.date):""].filter(Boolean).join(" · ");n=x.price?ils(x.price):"";
+  if(k==="jobs"){const o=owedOf(x);t=x.client||"ללא שם";s=[x.kind,x.place,x.work,x.date?heDate(x.date):""].filter(Boolean).join(" · ");
+    {const d=x.morning_doc_id&&data.morning_docs.find(m=>m.id===x.morning_doc_id);n=d&&num(d.amount)?ils(d.amount):x.price?ils(x.price)+" +מע״מ":"";}
     p=o>0?(invMatches().has(x.id)?`<span class="pill warn">חשבונית פתוחה ${esc(invMatches().get(x.id).number||"")}</span>`:`<span class="pill bad">חייב ${ils(o)}</span>`):jobDone(x)?`<span class="pill good">בוצע</span>`:x.paid==="כן"?`<span class="pill good">שולם</span>`:`<span class="pill warn">תשלום לא ידוע</span>`;
     const w=warrantyOf(x);if(w)s=(s?s+" · ":"")+(w==="on"?`באחריות עד ${heDate(warrantyEnd(x))}`:"אחריות הסתיימה")}
   if(k==="stock"){const lowv=num(x.min_qty)>0&&num(x.qty)<=num(x.min_qty);t=x.name;s=[x.category,x.brand,x.model,x.sku?'מק"ט '+x.sku:"",x.sell_price?"מכירה "+ils(x.sell_price):"",x.barcode?"ברקוד ✓":""].filter(Boolean).join(" · ");n=`${num(x.qty)} יח׳`;
