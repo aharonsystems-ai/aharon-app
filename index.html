@@ -1483,6 +1483,7 @@ function receiptSheet(d){
    <div class="pair"><div class="f"><label for="rAmt">סכום שהתקבל ₪</label><input id="rAmt" type="text" inputmode="decimal" dir="ltr" value="${esc(num(d.amount))}"></div>
     <div class="f"><label for="rDate">תאריך</label><input id="rDate" type="date" value="${today()}"></div></div>
    <div class="f"><label for="rPay">איך שילם</label><select id="rPay">${PAY_TYPES.map(([v,l])=>`<option value="${v}" ${v===1?"selected":""}>${esc(l)}</option>`).join("")}</select></div>
+   <div class="f"><label for="rShot">📎 צילום מסך של ההעברה (לא חובה)</label><input id="rShot" type="file" accept="image/*,application/pdf"></div>
    <div class="f"><label for="rMail">מייל הלקוח (לא חובה)</label><input id="rMail" type="email" dir="ltr" autocapitalize="off" autocomplete="off" name="x-rmail" value="${esc(d.client_email||"")}"></div>
    <div class="note" id="rMsg" hidden></div>
    <div class="bar"><button class="btn ghost" type="button" id="rPrev">👁️ תצוגה מקדימה</button><button class="btn" type="button" id="rGo" style="flex:1">🧾 הפקת קבלה</button><button class="btn ghost" type="button" data-close>סגירה</button></div></form>`;
@@ -1498,6 +1499,13 @@ function receiptSheet(d){
     if(!go.dataset.sure){go.dataset.sure="1";go.textContent=`ללחוץ שוב: קבלה אמיתית על ${ils(b.amount)}`;return}
     go.disabled=true;go.textContent="מפיק…";msg("");const r=await call(b);go.disabled=false;
     if(!r.ok){go.dataset.sure="";go.textContent="🧾 הפקת קבלה";msg(r.message||"נכשל");return}
+    // proof of payment (transfer screenshot) is kept with the job of this invoice, or under payments/
+    const shot=$("#rShot").files[0];
+    if(shot){try{const j=data.jobs.find(x=>x.morning_doc_id===d.id);const img=/^image\//.test(shot.type);const blob=img?await compress(shot):shot;
+      const path=`${j?j.id:"payments/"+d.id}/payment-${r.number||d.number}-${Date.now()}.${img?"jpg":"pdf"}`;
+      const up=await sb.storage.from("jobfiles").upload(path,blob,{contentType:img?"image/jpeg":"application/pdf"});
+      if(!up.error&&j&&img){const list=(j.photos||[]).slice();list.push({path,caption:`אישור תשלום – קבלה ${r.number||""}`,at:new Date().toISOString()});await sb.from("jobs").update({photos:list}).eq("id",j.id)}
+      if(up.error)toast("הקבלה הופקה, אבל צילום ההעברה לא עלה")}catch(x){toast("הקבלה הופקה, אבל צילום ההעברה לא עלה")}}
     toast(r.message||"הופקה קבלה");el.hidden=true;await loadAll()};
 }
 async function issueSheet(j,withW){

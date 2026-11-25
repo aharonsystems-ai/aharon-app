@@ -111,7 +111,7 @@ function docBody(b: any, client: any) {
     description: String(b.description || "").slice(0, 200) || undefined, remarks: b.remarks ? String(b.remarks).slice(0, type === 10 ? 1500 : 500) : undefined,
     // no_morning_mail: the invoice goes out in ONE Gmail mail together with the warranty, so Morning must not mail it too
     client: client?.id ? {id: client.id, name: client.name, emails: b.no_morning_mail ? [] : b.email ? [b.email] : (client.emails || []), add: false}
-      : {name: b.client, emails: b.no_morning_mail || !b.email ? [] : [b.email], phone: b.phone || undefined, mobile: b.phone || undefined, address: b.address || undefined, add: true},
+      : {name: b.client, emails: b.no_morning_mail || !b.email ? [] : [b.email], phone: b.phone || undefined, mobile: b.phone || undefined, address: b.address || undefined, taxId: b.tax_id ? String(b.tax_id).replace(/\D/g, "") : undefined, add: true},
     income: lines.map(l => ({description: l.description, quantity: l.quantity, price: l.price, currency: "ILS", vatType: incl ? 1 : 0}))};
   if (type === 320) body.payment = [{type: PAY[Number(b.pay_type)] ? Number(b.pay_type) : 4, date, price: total, currency: "ILS"}];
   return {body, total, type};
