@@ -49,10 +49,14 @@ Deno.serve(async (req) => {
     const docs = await all(tok, "/documents/search", {fromDate: ymd(from), toDate: ymd(now)});
     // client phones/emails live on the client card, not always on the document
     const cl: Record<string, any> = {};
-    try {
-      const clients = await all(tok, "/clients/search", {});
-      for (const c of clients) { if (c.id) cl[c.id] = c; if (c.name) cl["n:" + String(c.name).trim()] = c; }
-    } catch (_) { /* optional */ }
+    let clients: any[] = [], clErr = "";
+    try { clients = await all(tok, "/clients/search", {}); }
+    catch (e) { clErr = String((e as Error).message || e); try { clients = await all(tok, "/clients/search", {active: true}); clErr = ""; } catch (_) { /* keep the first error */ } }
+    for (const c of clients) { if (c.id) cl[c.id] = c; if (c.name) cl["n:" + String(c.name).trim()] = c; }
+    // every Morning client's emails and phone, for the app's client cards ("Morning is the source of client emails")
+    const cards = clients.filter((c: any) => c.name).map((c: any) => ({name: String(c.name).trim(),
+      emails: (c.emails || []).filter(Boolean), phone: c.mobile || c.phone || null, address: [c.address, c.city].filter(Boolean).join(", ") || null}));
+    if (cards.length) await sb.from("app_settings").upsert({key: "morning_clients", value: JSON.stringify(cards)});
     const cc = (d: any) => cl[d.client?.id] || cl["n:" + String(d.client?.name || "").trim()] || {};
     const phoneOf = (d: any) => { const c = cc(d); return d.client?.mobile || d.client?.phone || c.mobile || c.phone || null; };
     const mailOf = (d: any) => { const c = cc(d); return (d.client?.emails || [])[0] || d.client?.email || (c.emails || [])[0] || c.email || null; };
@@ -72,7 +76,7 @@ Deno.serve(async (req) => {
       if (er.length) { const { error } = await sb.from("morning_expenses").upsert(er); if (error) throw error; }
       exCount = er.length;
     } catch (_) { /* expenses are optional */ }
-    const msg = `${rows.length} מסמכים, ${exCount} הוצאות`;
+    const msg = `${rows.length} מסמכים, ${exCount} הוצאות, ${clients.length} לקוחות (${clients.filter((c: any) => (c.emails || []).length).length} עם מייל)` + (clErr ? ` · לקוחות: ${clErr}` : "");
     await sb.from("sync_log").insert({ok: true, message: msg});
     return new Response(JSON.stringify({ok: true, message: msg}), {headers: {...cors, "Content-Type": "application/json"}});
   } catch (e) {

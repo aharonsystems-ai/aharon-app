@@ -1005,6 +1005,7 @@ function clientIndex(){
   data.jobs.slice().sort((a,b)=>String(a.date||a.created_at||"").localeCompare(String(b.date||b.created_at||""))).forEach(j=>{const n=normName(j.client);if(!n)return;const c=get(n);c.jobs++;CLIENT_F.forEach(f=>{if(j[f])c[f]=j[f]})});
   data.morning_docs.forEach(d=>{const n=normName(d.client);if(!n)return;const c=get(n);if(!c.phone&&d.client_phone)c.phone=d.client_phone;if(!c.client_email&&d.client_email)c.client_email=d.client_email});
   data.projects.forEach(p=>{const n=normName(p.client);if(!n)return;const c=get(n);if(!c.address&&p.address)c.address=p.address});
+  morningClients().forEach(x=>{const n=normName(x.name);if(!n)return;const c=get(n);if(!c.client_email&&x.emails&&x.emails[0])c.client_email=x.emails[0];if(!c.phone&&x.phone)c.phone=x.phone;if(!c.address&&x.address)c.address=x.address});
   return [...m.values()];
 }
 function clientAuto(inp,form){
@@ -1443,8 +1444,11 @@ async function jobView(m){
 /* ---------- invoice in Morning + warranty certificate, one mail from Gmail ---------- */
 const W_ITEMS=["מצלמות אבטחה","מערכת אזעקה","אינטרקום ובקרת כניסה","רשת ותקשורת / WiFi","הגברה ואודיו","מגבר קליטה סלולרי"];
 const PAY_TYPES=[[4,"העברה בנקאית"],[10,"ביט / פייבוקס"],[1,"מזומן"],[2,"צ'ק"]];
+// every client card in Morning (name, emails, phone), saved by the Morning sync
+function morningClients(){const r=(data.app_settings||[]).find(s=>s.key==="morning_clients");if(!r)return[];try{return JSON.parse(r.value)||[]}catch(e){return[]}}
 function clientMail(j){
   if(j.client_email)return j.client_email;
+  {const n=canon(j.client),mc=morningClients().find(x=>x.emails&&x.emails[0]&&(canon(x.name)===n||normName(x.name)===normName(j.client)));if(mc)return mc.emails[0]}
   const hit=jobDocHit(j);const d=data.morning_docs.filter(x=>x.client_email&&(x.id===j.morning_doc_id||hit(x))).sort((a,b)=>String(b.doc_date).localeCompare(String(a.doc_date)))[0];
   if(d)return d.client_email;
   const o=data.jobs.find(x=>x.id!==j.id&&x.client_email&&normName(x.client)===normName(j.client));return o?o.client_email:"";
