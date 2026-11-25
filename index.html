@@ -1054,6 +1054,7 @@ function clientsAll(){
   data.debts.filter(d=>isOwed(d)).forEach(d=>{const c=get(d.name);if(c)c.sheet.push(d)});
   const list=[...m.values()];_ca={key,list};return list;
 }
+function docUrl(id){const d=data.morning_docs.find(x=>x.id===id);return d&&d.url||""}
 function clientMoney(c){
   const P=owedParts(),mine=n=>canon(n)===c.name;
   const inv=P.inv.filter(d=>mine(d.client)),jobs=P.jobs.filter(j=>mine(j.client)),sheet=P.sheet.filter(d=>mine(d.name));
@@ -1115,13 +1116,13 @@ function clientView(){
   <div class="bar">${c.phone?`<a class="btn ghost" href="tel:${esc(String(c.phone).replace(/[^\d+]/g,""))}" style="flex:1;text-align:center">📞 חיוג</a>`:""}${wa?`<a class="btn wa" href="https://wa.me/${wa}" target="_blank" rel="noopener" style="flex:1;text-align:center;text-decoration:none">WhatsApp</a>`:""}</div>
   ${wazeBtn(c.address)}
   <section class="list" aria-label="כסף">
-   <div class="sum"><span>חייב עכשיו (לפי הגיליון)</span><span style="${M.owed>0?"color:var(--bad)":""}">${ils(M.owed)}</span></div>
-   ${M.invoiced?`<div class="sum plain"><span>חשבוניות ב־Morning</span><span>${ils(M.invoiced)}</span></div>`:""}
-   <div class="sum plain"><span>רשום בעבודות באפליקציה (${jobs.length})</span><span>${ils(M.charged)}</span></div>
-   ${paidLine}
-   ${M.inv.length?`<div class="grp"><span>לידיעה · חשבוניות פתוחות ב־Morning</span><span>${ils(M.inv.reduce((a,d)=>a+num(d.amount),0))}</span></div>${M.inv.map(docRowC).join("")}`:""}
-   ${M.jobs.length?`<div class="grp"><span>לידיעה · עבודות שלא שולמו</span><span>${ils(M.jobs.reduce((a,j)=>a+owedOf(j),0))}</span></div>`:""}
-   ${M.sheet.length?`<div class="grp"><span>חייבים לי – מהגיליון</span><span>${ils(M.sheet.reduce((a,d)=>a+num(d.amount),0))}</span></div>${M.sheet.map(d=>row("debts",d)).join("")}`:""}
+   <div class="sum"><span>${M.owed>0?"חייב לך":"לא חייב כלום"}</span><span style="${M.owed>0?"color:var(--bad)":""}">${ils(M.owed)}</span></div>
+   ${(()=>{const g=owedParts().clients.find(x=>x.name===c.name);return g?owedClient(g).replace('<details class="ocl">','<details class="ocl" open>'):""})()}
+   <details class="ocl"><summary><span class="ot" style="font-size:14px;font-weight:700">היסטוריה וסיכומים</span><span class="os">חשבוניות, עבודות ותשלומים ▾</span></summary>
+    ${M.invoiced?`<div class="sum plain"><span>חשבוניות ב־Morning</span><span>${ils(M.invoiced)}</span></div>`:""}
+    <div class="sum plain"><span>עבודות באפליקציה (${jobs.length}) · לפני מע״מ</span><span>${ils(M.charged)}</span></div>
+    ${paidLine}
+   </details>
   </section>
   <div class="sechead"><h2>עבודות, תיקונים וקריאות שירות (${jobs.length})</h2><button class="btn ghost" type="button" data-cnew="jobs">+ עבודה</button></div>
   ${jobs.length?`<div class="note" style="margin:6px 0">${Object.entries(kinds).map(([k,n])=>`${esc(k)}: ${n}`).join(" · ")}</div>`:""}
@@ -1132,11 +1133,11 @@ function clientView(){
   <div class="list">${openT.length?openT.map(taskRow).join(""):`<div class="empty">אין משימות פתוחות.</div>`}</div>
   ${c.projects.length?`<h2>פרויקטים (${c.projects.length})</h2><div class="list">${c.projects.map(p=>row("projects",p)).join("")}</div>`:""}
   ${nvr?`<h2>מערכת הקלטה</h2><div class="list"><button type="button" class="row" data-open-job="${esc(nvr.id)}"><span class="t">${esc(nvr.nvr_model||"מערכת הקלטה")}</span><span class="n"></span><span class="s">${esc([nvr.nvr_serial?"S/N "+nvr.nvr_serial:"",nvr.nvr_ip,"הסיסמאות בכרטיס העבודה"].filter(Boolean).join(" · "))}</span><span class="p"></span></button></div>`:""}
-  ${docs.length?`<h2>מסמכים ב־Morning (${docs.length})</h2><div class="list">${docs.map(docRowC).join("")}</div>`:""}
-  <h2>איחוד עם לקוח אחר</h2>
+  ${docs.length?`<details class="ocl list" style="margin-top:12px"><summary><span class="ot">📄 מסמכים ב־Morning (${docs.length})</span><span class="os">חשבוניות, קבלות והצעות ▾</span></summary>${docs.map(docRowC).join("")}</details>`:""}
+  <details class="ocl" style="margin-top:12px"><summary><span class="ot" style="font-size:14px">🔗 איחוד עם לקוח אחר</span><span class="os">רק אם אותו לקוח רשום בשני שמות ▾</span></summary>
   ${sugg.length?`<div class="note">אולי זה אותו לקוח:</div><div class="list">${sugg.map(x=>`<div class="row" style="cursor:default"><span class="t">${esc(x.name)}</span><span class="n"></span><span class="s">${esc([x.jobs.length?x.jobs.length+" עבודות":"",x.phone].filter(Boolean).join(" · "))}</span><span class="p"><button class="btn ghost" type="button" data-merge="${esc(x.name)}">איחוד</button></span></div>`).join("")}</div>`:""}
   <div class="bar"><select id="mergeSel" style="flex:1;min-width:0"><option value="">— בחר לקוח שהוא אותו לקוח —</option>${all.filter(x=>x!==c).sort((a,b)=>a.name.localeCompare(b.name,"he")).map(x=>`<option>${esc(x.name)}</option>`).join("")}</select><button class="btn ghost" type="button" id="mergeBtn">איחוד</button></div>
-  <div class="note" style="font-size:12.5px">איחוד לא משנה שמות ב־Morning או בגיליונות – רק מציג את הכל כאן תחת לקוח אחד. אפשר להפריד בחזרה.</div>`;
+  <div class="note" style="font-size:12.5px">איחוד לא משנה שמות ב־Morning או בגיליונות – רק מציג את הכל כאן תחת לקוח אחד. אפשר להפריד בחזרה.</div></details>`;
 }
 async function mergeClient(from,into,btn){
   from=canon(from);into=canon(into);if(!from||!into||from===into)return;
@@ -1360,7 +1361,7 @@ async function jobView(m){
     ${j.place||j.address?`<div class="jaddr">📍 ${esc([j.place,j.address].filter(Boolean).join(" · "))}</div>`:""}
     <div class="jacts">${ph?`<a class="btn ghost" href="tel:${esc(ph)}">📞 חיוג</a>`:""}${wph?`<a class="btn ghost" href="https://wa.me/${wph}" target="_blank" rel="noopener">💬 צ׳אט</a>`:""}${j.address?wazeBtn(j.address):""}</div>
    </div>
-   <div class="jquick"><button class="btn" type="button" id="issueTop">${j.morning_doc_id?"✉️ שליחת חשבונית":"🧾 חשבונית"}</button><button class="btn ghost" type="button" id="issueTopW">🧾+🛡️ עם אחריות</button><label class="btn ghost" for="jPhotos">📷 תמונות</label></div>
+   <div class="jquick">${j.morning_doc_id&&(j.invoice_path||docUrl(j.morning_doc_id))?`<button class="btn" type="button" id="viewInv">📄 ${esc(j.receipt||"החשבונית")}</button>`:""}<button class="btn${j.morning_doc_id?" ghost":""}" type="button" id="issueTop">${j.morning_doc_id?"✉️ שליחה שוב":"🧾 חשבונית"}</button><button class="btn ghost" type="button" id="issueTopW">🧾+🛡️ עם אחריות</button><label class="btn ghost" for="jPhotos">📷 תמונות</label></div>
 
    <details class="jcard" ${j.client&&j.date&&j.price?"":"open"}><summary><h3>📋 פרטי העבודה</h3></summary>
     <div class="pair">${JF.map(([k,l,t,opts])=>`<div class="f"${t==="textarea"||k==="client"||k==="address"?' style="grid-column:1/-1"':""}><label for="jf_${k}">${l}</label>${
@@ -1419,6 +1420,7 @@ async function jobView(m){
   $("#jPay").onchange=()=>save({pay_link:$("#jPay").value.trim()||null});
   $("#jWno").onchange=async()=>{const v=$("#jWno").value.replace(/\D/g,"");const d=v&&data.jobs.find(x=>x.id!==j.id&&String(x.warranty_no||"")===v);if(d){toast(`תעודה ${v} כבר רשומה על ${d.client}`);$("#jWno").value=j.warranty_no||"";return}$("#jWno").value=v;await save({warranty_no:v||null})};
   $("#jMail").onchange=()=>save({client_email:$("#jMail").value.trim()||null});
+  if($("#viewInv"))$("#viewInv").onclick=()=>{if(j.invoice_path)openJobFile(j.invoice_path);else window.open(docUrl(j.morning_doc_id),"_blank")};
   $("#issueBtn").onclick=()=>issueSheet(j,false);$("#issueTop").onclick=()=>issueSheet(j,false);$("#issueBtnW").onclick=()=>issueSheet(j,true);$("#issueTopW").onclick=()=>issueSheet(j,true);
   const jl=$("#jLater");if(jl)jl.onchange=()=>{save({bill_later:jl.checked});toast(jl.checked?"העבודה ממתינה לחשבונית מרוכזת":"בוטל")};
   document.querySelectorAll("[data-jfile]").forEach(b=>b.onclick=()=>openJobFile(b.dataset.jfile));
@@ -1586,6 +1588,8 @@ async function issueSheet(j,withW){
     go.disabled=true;go.textContent=mode()==="new"?"מפיק ושולח…":"שולח…";msg("");
     const r=await call(b);go.disabled=false;
     if(!r.ok){msg(r.message||"נכשל");go.dataset.sure="";sync();await loadAll();return}
+    {const up={};if(b.phone&&b.phone!==j.phone)up.phone=b.phone;if(b.address&&b.address!==j.address&&b.address!==j.place)up.address=b.address;
+     if(Object.keys(up).length)await sb.from("jobs").update(up).eq("id",j.id);}
     form.dataset.dirty="";toast(r.message||"נשלח");el.hidden=true;await loadAll();
   };
 }
