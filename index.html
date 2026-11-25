@@ -1513,7 +1513,7 @@ async function issueSheet(j,withW){
      <button class="btn ghost" type="button" data-rmline aria-label="מחיקת שורה" style="padding:8px 0">✕</button></div>`;
   const mode0=linked?"linked":"new";
   el.innerHTML=`<form id="edit" novalidate><h3>${wOn?"🧾 חשבונית + תעודת אחריות":"🧾 חשבונית"}</h3>
-   <div class="note">החשבונית מופקת ב-Morning, ו-Morning שולח אותה ללקוח במייל. תעודת אחריות (אם יש) יוצאת במייל נפרד מהג'ימייל של אהרן מערכות.</div>
+   <div class="note">החשבונית מופקת ב-Morning. עם תעודת אחריות – הלקוח מקבל מייל אחד מהג'ימייל של אהרן מערכות, עם החשבונית והתעודה מצורפות. בלי תעודה – Morning שולח לו את החשבונית.</div>
    <div class="f"><label for="iMode">מה לצרף</label><select id="iMode">
      <option value="new" ${mode0==="new"?"selected":""}>חשבונית חדשה ב-Morning + תעודת אחריות</option>
      ${linked?`<option value="linked" selected>${esc(linked.type_name)} ${esc(linked.number)} (כבר הופקה) + תעודת אחריות</option>`:""}
@@ -1574,7 +1574,7 @@ async function issueSheet(j,withW){
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(b.email)){$("#iMail").focus();msg("צריך מייל של הלקוח");return}
     if(mode()==="new"&&!b.lines.some(l=>l.description&&l.price)){msg("צריך שורה עם תיאור ומחיר");return}
     if(mode()==="warranty"&&!b.warranty.no){$("#iWno").focus();msg("צריך מספר תעודה");return}
-    if(!go.dataset.sure){go.dataset.sure="1";go.textContent=mode()==="new"?"ללחוץ שוב: מפיק חשבונית אמיתית ב-Morning, ו-Morning שולח אותה ל-"+b.email:"ללחוץ שוב לשליחה ל-"+b.email;return}
+    if(!go.dataset.sure){go.dataset.sure="1";go.textContent=mode()==="new"?"ללחוץ שוב: מפיק חשבונית אמיתית ב-Morning ושולח ל-"+b.email:"ללחוץ שוב לשליחה ל-"+b.email;return}
     go.disabled=true;go.textContent=mode()==="new"?"מפיק ושולח…":"שולח…";msg("");
     const r=await call(b);go.disabled=false;
     if(!r.ok){msg(r.message||"נכשל");go.dataset.sure="";sync();await loadAll();return}
@@ -1631,7 +1631,7 @@ function multiIssueSheet(cname){
     if(!b.job_ids.length){msg("צריך לסמן לפחות עבודה אחת");return}
     if(!b.lines.every(l=>l.description&&l.price)){msg("בכל עבודה מסומנת צריך תיאור ומחיר");return}
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(b.email)){$("#mMail").focus();msg("צריך מייל של הלקוח");return}
-    if(!go.dataset.sure){go.dataset.sure="1";go.textContent="ללחוץ שוב: מפיק חשבונית אמיתית ב-Morning, ו-Morning שולח אותה ל-"+b.email;return}
+    if(!go.dataset.sure){go.dataset.sure="1";go.textContent="ללחוץ שוב: מפיק חשבונית אמיתית ב-Morning ושולח ל-"+b.email;return}
     go.disabled=true;go.textContent="מפיק ושולח…";msg("");
     const r=await call(b);go.disabled=false;
     if(!r.ok){msg(r.message||"נכשל");go.dataset.sure="";tot();await loadAll();return}

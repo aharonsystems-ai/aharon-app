@@ -109,8 +109,9 @@ function docBody(b: any, client: any) {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(b.date || "")) ? String(b.date) : new Date().toISOString().slice(0, 10);
   const body: any = {type, date, lang: "he", currency: "ILS", vatType: 0, rounding: false, signed: true, attachment: true,
     description: String(b.description || "").slice(0, 200) || undefined, remarks: b.remarks ? String(b.remarks).slice(0, type === 10 ? 1500 : 500) : undefined,
-    client: client?.id ? {id: client.id, name: client.name, emails: b.email ? [b.email] : (client.emails || []), add: false}
-      : {name: b.client, emails: b.email ? [b.email] : [], phone: b.phone || undefined, mobile: b.phone || undefined, address: b.address || undefined, add: true},
+    // no_morning_mail: the invoice goes out in ONE Gmail mail together with the warranty, so Morning must not mail it too
+    client: client?.id ? {id: client.id, name: client.name, emails: b.no_morning_mail ? [] : b.email ? [b.email] : (client.emails || []), add: false}
+      : {name: b.client, emails: b.no_morning_mail || !b.email ? [] : [b.email], phone: b.phone || undefined, mobile: b.phone || undefined, address: b.address || undefined, add: true},
     income: lines.map(l => ({description: l.description, quantity: l.quantity, price: l.price, currency: "ILS", vatType: incl ? 1 : 0}))};
   if (type === 320) body.payment = [{type: PAY[Number(b.pay_type)] ? Number(b.pay_type) : 4, date, price: total, currency: "ILS"}];
   return {body, total, type};
@@ -437,6 +438,8 @@ Deno.serve(async (req) => {
       if (!mailUrl || !mailSecret) throw new Error("שליחת המייל עוד לא מחוברת (סקריפט הג'ימייל)");
       const now = new Date().toISOString();
       const mtok = await morningToken();
+      const hasW = !!b.attach_warranties && jobs.some((x: any) => x.warranty_path);
+      b.no_morning_mail = hasW;
       const {body, total, type} = docBody(b, await findClient(mtok, b.client || jobs[0].client));
       const created = await mcall(mtok, "POST", "/documents", body);
       const docId = created.id;
@@ -448,7 +451,7 @@ Deno.serve(async (req) => {
       const inv = await docPdf(mtok, docId, created);
       const invPath = `multi/${docId}.pdf`;
       await sb.storage.from("jobfiles").upload(invPath, inv.bytes, {contentType: "application/pdf", upsert: true});
-      const files: {path: string; name: string}[] = [];
+      const files: {path: string; name: string}[] = hasW ? [{path: invPath, name: fname(`${docName} - אהרן מערכות.pdf`)}] : [];
       const wNos: string[] = [];
       if (b.attach_warranties) for (const x of jobs) if (x.warranty_path) { files.push({path: x.warranty_path, name: fname(`תעודת אחריות ${x.warranty_no || ""} - אהרן מערכות.pdf`)}); if (x.warranty_no) wNos.push(String(x.warranty_no)); }
       for (const x of jobs) await sb.from("jobs").update({invoice_path: invPath}).eq("id", x.id);
@@ -459,9 +462,9 @@ Deno.serve(async (req) => {
       const att = [];
       for (const f of files) { const {data: u} = await sb.storage.from("jobfiles").createSignedUrl(f.path, 900); att.push({url: u?.signedUrl, name: f.name}); }
       const first = String(b.client || jobs[0].client || "").trim().split(/\s+/)[0] || "";
-      const subject = "תעודות אחריות – אהרן מערכות";
+      const subject = docName + " ותעודות אחריות – אהרן מערכות";
       const mr = await fetch(mailUrl, {method: "POST", headers: {"Content-Type": "application/json"}, redirect: "follow",
-        body: JSON.stringify({secret: mailSecret, to, subject, html: mailHtml({first, docName: "", wNo: wNos.join(", "), summary: String(b.mail_text || "").trim()}), attachments: att})});
+        body: JSON.stringify({secret: mailSecret, to, subject, html: mailHtml({first, docName, wNo: wNos.join(", "), summary: String(b.mail_text || "").trim()}), attachments: att})});
       const mt = await mr.text(); let md: any = {}; try { md = JSON.parse(mt); } catch (_) { /* html */ }
       if (!md.ok) throw new Error(`החשבונית הופקה (${docName}) אבל המייל לא נשלח: ` + (md.error || mt.slice(0, 160) || mr.status));
       for (const x of jobs) await sb.from("jobs").update({mail_sent_at: new Date().toISOString(), mail_to: to}).eq("id", x.id);
@@ -478,6 +481,7 @@ Deno.serve(async (req) => {
       if (action === "issue") {
         if (job.morning_doc_id && !b.force) throw new Error("לעבודה הזו כבר מקושרת חשבונית ב-Morning. אפשר לשלוח אותה עם התעודה.");
         const mtok = await morningToken();
+        b.no_morning_mail = !!wNo;
         const {body, total, type} = docBody(b, await findClient(mtok, b.client || job.client));
         const created = await mcall(mtok, "POST", "/documents", body);
         docId = created.id;
@@ -498,7 +502,8 @@ Deno.serve(async (req) => {
         invPath = `${job.id}/invoice-${inv.number || docId}.pdf`;
         await sb.storage.from("jobfiles").upload(invPath, inv.bytes, {contentType: "application/pdf", upsert: true});
         // a new invoice is mailed to the client by Morning itself (client.emails); Gmail only for resends and the warranty
-        if (action !== "issue") files.push({path: invPath, name: fname(`${docName} - אהרן מערכות.pdf`)});
+        // with a warranty: one Gmail mail with both PDFs (Morning was told not to mail); without: Morning mails the invoice
+        if (action !== "issue" || wNo) files.push({path: invPath, name: fname(`${docName} - אהרן מערכות.pdf`)});
       }
       let wPath = null;
       if (wNo) {
