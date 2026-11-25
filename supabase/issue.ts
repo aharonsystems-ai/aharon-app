@@ -316,7 +316,7 @@ Deno.serve(async (req) => {
     // quote (הצעת מחיר, type 10) made in the app: preview only, or create it in Morning. Nothing is mailed.
     if (action === "quote_preview" || action === "quote") {
       const mtok = await morningToken();
-      const {body, total} = docBody({...b, type: Number(b.doc_type) === 300 ? 300 : 10}, await findClient(mtok, String(b.client || "")));
+      const {body, total} = docBody({...b, type: [300, 305].includes(Number(b.doc_type)) ? Number(b.doc_type) : 10}, await findClient(mtok, String(b.client || "")));
       if (action === "quote_preview") {
         const p = await mcall(mtok, "POST", "/documents/preview", body);
         const pdf = p.file || p.pdf || p.data || null;
