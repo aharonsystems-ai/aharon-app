@@ -1158,7 +1158,7 @@ async function unmerge(alias,btn){
 
 /* ---------- voice: talk, and the app adds tasks / jobs / projects (with a check before saving) ---------- */
 let rec=null,voiceItems=[],voiceHeard="";
-const VT=[["task","משימה"],["job","עבודה"],["project","פרויקט"]];
+const VT=[["task","משימה"],["job","עבודה"],["project","פרויקט"],["quote","הצעת מחיר"]];
 const blob64=blob=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(",")[1]||"");r.onerror=no;r.readAsDataURL(blob)});
 function voiceStart(){return `<button class="btn mic" type="button" id="vRec">🎤 התחל הקלטה</button>
    <div class="f"><label for="vText">או לכתוב / להכתיב במקלדת</label><textarea id="vText" placeholder="מחר בעשר ללכת לברוך פריד להחליף מצלמה…">${esc(voiceHeard)}</textarea></div>
@@ -1166,7 +1166,7 @@ function voiceStart(){return `<button class="btn mic" type="button" id="vRec">�
 function voiceSheet(){
   const el=$("#sheet");voiceItems=[];voiceHeard="";
   el.innerHTML=`<form id="edit" novalidate><h3>🎤 לדבר עם האפליקציה</h3>
-   <div class="note">אפשר לדבר חופשי על כמה דברים ביחד: משימות, עבודות שסגרת, פרויקטים. למשל: "מחר בעשר ללכת לברוך פריד להחליף מצלמה. אצל הליגמן קריאת שירות 350 שקל, שילם."</div>
+   <div class="note">אפשר לדבר חופשי על כמה דברים ביחד: משימות, עבודות שסגרת, פרויקטים, והצעות מחיר ("תכין הצעת מחיר ליהונתן: מערכת 8 ערוצים, 2 כיפה, 2 צינור, מסך"). למשל: "מחר בעשר ללכת לברוך פריד להחליף מצלמה. אצל הליגמן קריאת שירות 350 שקל, שילם."</div>
    <div id="vBody" style="display:grid;gap:10px">${voiceStart()}</div>
    <div class="actions"><button class="btn ghost" type="button" data-close>סגירה</button></div></form>`;
   el.hidden=false;const form=$("#edit");form.onsubmit=e=>e.preventDefault();
@@ -1232,6 +1232,12 @@ async function understand(payload){
 function vCard(x,i){
   const f=(k,l,type)=>`<div class="f"><label>${l}</label><input data-vi="${i}" data-vk="${k}" ${type==="number"?'type="number" inputmode="decimal" step="any"':type==="date"?'type="date"':type==="time"?'type="time"':'type="text"'} value="${esc(x[k]??"")}"></div>`;
   const sel=(k,l,opts)=>`<div class="f"><label>${l}</label><select data-vi="${i}" data-vk="${k}">${opts.map(o=>{const [v,t]=Array.isArray(o)?o:[o,o||"—"];return `<option value="${esc(v)}" ${v===(x[k]??"")?"selected":""}>${esc(t)}</option>`}).join("")}</select></div>`;
+  if(x.type==="quote"){const L=x.lines||[],tot=L.reduce((a,l)=>a+num(l.quantity)*num(l.price),0);
+    return `<div class="vcard${x.on?"":" off"}"><div class="vhead"><label class="vchk"><input type="checkbox" data-von="${i}" ${x.on?"checked":""}> להכין</label><select data-vi="${i}" data-vk="type" aria-label="סוג">${VT.map(([v,t])=>`<option value="${v}" ${v===x.type?"selected":""}>${t}</option>`).join("")}</select></div>
+     <div class="pair">${f("client","לקוח")}${f("phone","טלפון")}</div>
+     <div class="list" style="margin:4px 0">${L.map(l=>`<div class="sum plain"><span>${esc(l.description)} × ${esc(l.quantity)}</span><span>${l.price==null?"—":ils(num(l.quantity)*num(l.price))}</span></div>`).join("")||`<div class="empty">לא הובנו פריטים</div>`}
+      <div class="sum"><span>סה״כ לפני מע״מ</span><span>${ils(tot)}</span></div></div>
+     <div class="note" style="font-size:12.5px">בשמירה נפתחת ההצעה המלאה לעריכה ותצוגה מקדימה – שום דבר לא יוצא ל-Morning בלי לחיצה שלך.</div></div>`}
   const main=x.type==="task"?f("title","מה לעשות"):x.type==="job"?f("work","מה בוצע"):f("name","שם הפרויקט");
   const more=x.type==="job"?`<div class="pair">${sel("kind","סוג",KINDS)}${f("price","מחיר ₪","number")}</div><div class="pair">${sel("paid","שולם?",["לא ידוע","כן","לא","חלקי"])}${f("place","מקום")}</div>`
     :x.type==="project"?f("address","כתובת"):"";
@@ -1251,14 +1257,17 @@ async function saveVoice(btn){
   syncV();const on=voiceItems.filter(x=>x.on);if(!on.length){toast("לא נבחר כלום לשמירה");return}
   btn.disabled=true;btn.textContent="שומר…";
   const now=new Date().toISOString(),s=v=>String(v??"").trim(),n=v=>s(v)===""||isNaN(Number(v))?null:Number(v),d=v=>s(v)||null;
-  let ok=0;const bad=[];
-  for(const x of on){let t,r;
+  let ok=0;const bad=[];const quote=on.find(x=>x.type==="quote");
+  for(const x of on){let t,r;if(x.type==="quote")continue;
     if(x.type==="job"){t="jobs";r={client:s(x.client)||"ללא שם",work:s(x.work)||s(x.title)||s(x.name),kind:s(x.kind),date:d(x.date),time:d(x.time),price:n(x.price),paid:s(x.paid)||"לא ידוע",paid_amount:n(x.paid_amount),place:s(x.place),address:s(x.address),phone:s(x.phone),notes:s(x.notes)}}
     else if(x.type==="project"){t="projects";r={name:s(x.name)||s(x.title)||s(x.work)||"פרויקט",client:s(x.client),address:s(x.address),date:d(x.date),time:d(x.time),status:"תכנון",notes:s(x.notes)}}
     else{t="tasks";r={title:s(x.title)||s(x.work)||s(x.name)||"משימה",client:s(x.client)||null,date:d(x.date),time:d(x.time),notes:s(x.notes),done:"פתוח"}}
     r.updated_at=now;const res=await sb.from(t).insert(r);if(res.error)bad.push(x);else ok++}
   if(bad.length){voiceItems=bad;btn.disabled=false;reviewHtml();toast(`נשמרו ${ok}. ${bad.length} לא נשמרו – אפשר לנסות שוב`);await loadAll();return}
-  $("#sheet").hidden=true;voiceItems=[];toast(`✔ נשמרו ${ok}`);await loadAll();render();
+  voiceItems=[];if(ok){toast(`✔ נשמרו ${ok}`);await loadAll();render()}
+  if(quote){newQuoteSheet({client:String(quote.client||"").trim(),phone:String(quote.phone||"").trim(),address:String(quote.address||"").trim(),
+    description:String(quote.description||"").trim()||"הצעת מחיר",lines:(quote.lines||[]).map(l=>({description:l.description,quantity:l.quantity,price:l.price??""}))});return}
+  $("#sheet").hidden=true;
 }
 
 /* ---------- edit sheet ---------- */

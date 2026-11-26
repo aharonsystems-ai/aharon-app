@@ -8,15 +8,19 @@ const cors = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), {status: s, headers: {...cors, "Content-Type": "application/json"}});
 const KINDS = ["התקנה","תיקון","קריאת שירות","תחזוקה","אחר"];
 
-function prompt(today: string, weekday: string, clients: string, typed: string) {
+function prompt(today: string, weekday: string, clients: string, typed: string, prices: string) {
   return `אתה העוזר של אהרן, בעל "אהרן מערכות" – עסק להתקנת מצלמות אבטחה, אזעקות, תקשורת, אינטרקום וסאונד בישראל.
 ${typed ? "זה מה שאהרן כתב/הכתיב:\n\"\"\"" + typed + "\"\"\"" : "אהרן הקליט הודעה קולית בעברית (מצורפת). קודם כתוב בדיוק מה הוא אמר."}
 היום ${weekday}, ${today} (שעון ישראל). "מחר", "ביום שלישי", "בעוד שבוע" – המר לתאריך אמיתי בפורמט YYYY-MM-DD (יום בשבוע שעבר כבר השבוע = השבוע הבא).
 פרק את מה שנאמר לפריטים נפרדים. סוגים:
 - "task" = משימה / תזכורת / משהו לעשות (לבדוק, להתקשר, לשלוח, לקנות, ללכת).
 - "job" = עבודה שבוצעה או נסגרה אצל לקוח: התקנה, תיקון, קריאת שירות – בדרך כלל עם מחיר.
-- "project" = פרויקט גדול / תכנון / הצעת מחיר לבניין או לאתר.
+- "project" = פרויקט גדול / תכנון לבניין או לאתר (בלי בקשה להכין הצעת מחיר).
+- "quote" = בקשה להכין / להוציא / לתמחר הצעת מחיר ללקוח ("תוציא הצעת מחיר", "תכין הצעה", "תמחר לי"). בנה שורות מלאות לפי המחירון של אהרן למטה.
 אם לא ברור – זה task.
+מחירון של אהרן (לפני מע״מ) והכללים שלו להצעות מחיר:
+${prices || "(אין מחירון – השאר price ריק)"}
+בהצעת מחיר: אם אהרן אמר מחיר – המחיר שלו קובע. כל פריט שנאמר = שורה עם תיאור מקצועי כמו במחירון, כמות ומחיר ליחידה. "X פלוס Y" או "X או Y" (למשל "כיפה או טורט") = תיאור "כיפה / טורט".
 שמות לקוחות קיימים (אם השם שנאמר דומה לאחד מהם – השתמש בשם הקיים בדיוק):
 ${clients || "(אין)"}
 החזר רק JSON:
@@ -36,7 +40,9 @@ ${clients || "(אין)"}
    "address": "כתובת או \\"\\"",
    "phone": "טלפון או \\"\\"",
    "name": "לפרויקט: שם הפרויקט",
-   "notes": "פרטים נוספים שנאמרו או \\"\\""}]}
+   "notes": "פרטים נוספים שנאמרו או \\"\\"",
+   "description": "להצעת מחיר: כותרת קצרה, למשל הצעת מחיר – מערכת מצלמות אבטחה",
+   "lines": [{"description": "תיאור השורה", "quantity": מספר, "price": מספר ליחידה לפני מע״מ}]}]}
 אל תמציא פרטים שלא נאמרו. אם לא נאמר אם שילם – "לא ידוע". אין כפילויות.`;
 }
 
@@ -105,12 +111,14 @@ Deno.serve(async (req) => {
   const weekday = String(body.weekday || "");
   const clients = (Array.isArray(body.clients) ? body.clients : []).map((s: unknown) => String(s).slice(0, 80)).slice(0, 400).join("\n");
   try {
-    const p = prompt(today, weekday, clients, audio ? "" : text);
+    const {data: pl} = await sb.from("app_settings").select("value").eq("key", "price_list").maybeSingle();
+    const p = prompt(today, weekday, clients, audio ? "" : text, String(pl?.value || ""));
     const r = audio
       ? await gemini(gKey!, [{inline_data: {mime_type: String(body.mime || "audio/wav"), data: audio}}, {text: p}])
       : (gKey ? await gemini(gKey, [{text: p}]) : await claude(aKey!, p));
-    const items = (Array.isArray(r.items) ? r.items : []).filter((x: any) => x && ["task", "job", "project"].includes(x.type)).slice(0, 20);
-    items.forEach((x: any) => { if (x.kind && !KINDS.includes(x.kind)) x.kind = "אחר"; if (!["כן", "לא", "חלקי", "לא ידוע"].includes(x.paid)) x.paid = "לא ידוע"; });
+    const items = (Array.isArray(r.items) ? r.items : []).filter((x: any) => x && ["task", "job", "project", "quote"].includes(x.type)).slice(0, 20);
+    items.forEach((x: any) => { if (x.type === "quote") x.lines = (Array.isArray(x.lines) ? x.lines : []).filter((l: any) => l && l.description).map((l: any) => ({description: String(l.description).slice(0, 300), quantity: Number(l.quantity) || 1, price: l.price == null || l.price === "" ? null : Number(l.price)})).slice(0, 40);
+      if (x.kind && !KINDS.includes(x.kind)) x.kind = "אחר"; if (!["כן", "לא", "חלקי", "לא ידוע"].includes(x.paid)) x.paid = "לא ידוע"; });
     return json({ok: true, transcript: String(r.transcript || text || ""), items, model: gKey ? gModel : "claude"});
   } catch (e) {
     return json({ok: false, message: String((e as Error).message || e)}, 500);
